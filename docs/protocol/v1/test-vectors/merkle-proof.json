@@ -1,0 +1,70 @@
+{
+  "spec": "proveria-protocol-v1",
+  "vectorCategory": "merkle-proof",
+  "version": "1.0",
+  "specSection": "§6.7",
+  "description": "For each test, given a tree (defined by its sorted leaf set) and a target leaf, produce the proof path of sibling-position steps from leaf to root. A verifier walks the proof and confirms the recomputed root equals the tree's expectedRoot.",
+  "vectors": [
+    {
+      "name": "single-leaf-empty-proof",
+      "note": "§6.6 — a 1-leaf tree's proof path is empty.",
+      "input": {
+        "leafHashesHex": [
+          "c0a9acf68a3b0a044bdc477d1e66048d458f4a42482418831dbdcdb2106a90fd"
+        ],
+        "targetLeafHashHex": "c0a9acf68a3b0a044bdc477d1e66048d458f4a42482418831dbdcdb2106a90fd"
+      },
+      "expected": {
+        "proofPath": [],
+        "merkleRootHex": "c0a9acf68a3b0a044bdc477d1e66048d458f4a42482418831dbdcdb2106a90fd"
+      }
+    },
+    {
+      "name": "four-leaves-leftmost-target",
+      "note": "Target L0; proof has [{sibling: L1, position: right}, {sibling: N(L2,L3), position: right}].",
+      "input": {
+        "leafHashesHex": [
+          "1000000000000000000000000000000000000000000000000000000000000001",
+          "1000000000000000000000000000000000000000000000000000000000000002",
+          "1000000000000000000000000000000000000000000000000000000000000003",
+          "1000000000000000000000000000000000000000000000000000000000000004"
+        ],
+        "targetLeafHashHex": "1000000000000000000000000000000000000000000000000000000000000001"
+      },
+      "expected": {
+        "proofPath": [
+          {
+            "sibling": "1000000000000000000000000000000000000000000000000000000000000002",
+            "position": "right"
+          },
+          {
+            "sibling": "e70b16b96c88e3002f0774ad5c4f68aa9f71cead469b1890cc3a28ff7612ff61",
+            "position": "right"
+          }
+        ],
+        "merkleRootHex": "662df91d66ae435d448af483a10d8b7fc593d7b268b3cfcefdab32d341c9f65b"
+      }
+    },
+    {
+      "name": "three-leaves-rightmost-target-promotion",
+      "note": "Target L2 with the §6.5 odd-leaf rule. Level-0 sibling: none (L2 was promoted unchanged). Level-1 sibling: N(L0,L1) on the left.",
+      "input": {
+        "leafHashesHex": [
+          "0a00000000000000000000000000000000000000000000000000000000000001",
+          "0a00000000000000000000000000000000000000000000000000000000000002",
+          "0a00000000000000000000000000000000000000000000000000000000000003"
+        ],
+        "targetLeafHashHex": "0a00000000000000000000000000000000000000000000000000000000000003"
+      },
+      "expected": {
+        "proofPath": [
+          {
+            "sibling": "040b87cc6a92f0745be15756fdb3e581f22d11458c4f459677f28a8facd1aedd",
+            "position": "left"
+          }
+        ],
+        "merkleRootHex": "7f869f56b032e4444f2682f9f5113f4c4577f407b8a001a9dc3f5b01e3e88634"
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+packages:
+  - apps/*
+  - '!apps/app'
+  - packages/*
+
+# Security-driven version overrides (M15/C57). Both advisories patched
+# only in the listed minimum; pinning here applies to every transitive
+# consumer without per-package edits.
+overrides:
+  # GHSA-gpj5-g38j-94v9 — SQL injection via SQL identifiers (<0.45.2)
+  drizzle-orm: ^0.45.2
+  # GHSA-qx2v-qp2m-jg93 — XSS via Unescaped </style> in CSS stringify (<8.5.10)
+  postcss: ^8.5.10
+
+# Native-module postinstall scripts pnpm requires us to explicitly approve.
+# All entries below are first-party tooling we control.
+allowBuilds:
+  '@napi-rs/canvas': true
+  argon2: true
+  electron: true
+  esbuild: true
+  msgpackr-extract: true
+  sharp: true
+  # tesseract.js' postinstall is opencollective-postinstall — a funding
+  # banner with no runtime effect — so we explicitly deny it.
+  tesseract.js: false

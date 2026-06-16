@@ -1,0 +1,21 @@
+- creates walkthrough accounts
+pnpm --filter @proveria/worker walkthrough:personas
+
+- launch producer app
+pnpm --filter @proveria/desktop dev
+
+- bring up the whole stack (data stores + api + worker + verifier)
+- first run takes a few minutes (Playwright image is large); subsequent runs are fast
+docker compose --profile app up
+
+- bring up just the data stores (default workflow with separate pnpm dev panes)
+docker compose up -d
+
+- platform-admin powers in container mode: set the env then up
+PROVERIA_PLATFORM_ADMINS=platform-admin-<suffix>@proveria.local docker compose --profile app up
+
+- tear down everything
+docker compose --profile app down
+
+- consumer hash
+pnpm --filter @proveria/hash-cli dev file /path/to/your/file

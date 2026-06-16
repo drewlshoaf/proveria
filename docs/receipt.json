@@ -1,0 +1,35 @@
+{
+  "receipt_version": "1.0",
+  "receipt_type": "attestation",
+  "package_id": "pkg_0e614a3db475528b7a85ce12bfcb1f6b",
+  "tenant_id": "c7726ba4-a27f-4761-ade9-7eb1398cfa42",
+  "project_id": "33e63922-f912-4df5-9087-b4d7a020df5e",
+  "attestation_id": "8be8808e-5379-4fad-b164-34a6a6e19dad",
+  "attestation_label": "walkthrough-ea5317f2",
+  "confirmed_attempt_id": "598ea2db-3ef1-4aee-9459-22789c168e5a",
+  "manifest_object_key": "tenants/c7726ba4-a27f-4761-ade9-7eb1398cfa42/projects/33e63922-f912-4df5-9087-b4d7a020df5e/attestations/8be8808e-5379-4fad-b164-34a6a6e19dad/attempts/598ea2db-3ef1-4aee-9459-22789c168e5a/manifest.json",
+  "manifest_canonical_sha256": "f9d60d192c298f61f3324ae6294b33b8b2648b34ebdcf012e50aa6565a091493",
+  "merkle_root": "260ca6d382e463b1335cf313f030d75e76d802f38f6373d19ee8e8c97779ed8f",
+  "leaf_counts": {
+    "file": 1,
+    "shingle": 0,
+    "component": 0
+  },
+  "hash_algorithm": "sha256",
+  "protocol_version": "1.0",
+  "device_signature": {
+    "key_id": "b554fefd-4880-4a2b-a411-74a3cb59fc61",
+    "algorithm": "ed25519",
+    "verified": true
+  },
+  "confirmed_at": "2026-05-14T12:04:40.687Z",
+  "issued_at": "2026-05-14T12:04:40.706Z",
+  "signatures": [
+    {
+      "signer_kind": "proveria",
+      "key_id": "proveria-dev-platform-key",
+      "algorithm": "ed25519",
+      "signature": "QrbpaM1_SAvmrlxiUrr7sLoM6g1jPSNauHTnL5TTQaJj3Bjpah_Ds-i7KYXaBvAIi4WN8rWja7l9lY3Edw0_BA"
+    }
+  ]
+}

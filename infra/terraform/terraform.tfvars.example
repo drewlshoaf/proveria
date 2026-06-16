@@ -1,0 +1,27 @@
+# Local AWS profile. Leave empty to use the default AWS credential chain.
+aws_profile = ""
+aws_region  = "us-east-1"
+
+project     = "proveria"
+environment = "dev"
+
+# Defaults to zero so the base stack can be created before images are pushed.
+service_desired_count = {
+  api      = 0
+  worker   = 0
+  verifier = 0
+}
+
+image_tag = "dev"
+
+# Optional explicit image URIs, useful after CI starts publishing images.
+# container_images = {
+#   api      = "123456789012.dkr.ecr.us-east-1.amazonaws.com/proveria-dev-api:dev"
+#   worker   = "123456789012.dkr.ecr.us-east-1.amazonaws.com/proveria-dev-worker:dev"
+#   verifier = "123456789012.dkr.ecr.us-east-1.amazonaws.com/proveria-dev-verifier:dev"
+# }
+
+# Dev teardown convenience. For production, set this false and add lifecycle
+# controls around artifact retention.
+force_destroy_artifacts = true
+

@@ -1,0 +1,150 @@
+{
+  "spec": "proveria-protocol-v1",
+  "vectorCategory": "merkle-tree",
+  "version": "1.0",
+  "specSection": "§6",
+  "description": "Maps an ordered set of leaf hashes (raw 32-byte hashes, hex-encoded) to the Merkle root. The implementation sorts the leaves per §6.2, hashes pairs per §6.3, and promotes the final unpaired hash per §6.5.",
+  "vectors": [
+    {
+      "name": "single-leaf",
+      "note": "A 1-leaf tree's root equals its only leaf (§6.6).",
+      "input": {
+        "leafHashesHex": [
+          "c0a9acf68a3b0a044bdc477d1e66048d458f4a42482418831dbdcdb2106a90fd"
+        ]
+      },
+      "expected": {
+        "sortedLeafHashesHex": [
+          "c0a9acf68a3b0a044bdc477d1e66048d458f4a42482418831dbdcdb2106a90fd"
+        ],
+        "merkleRootHex": "c0a9acf68a3b0a044bdc477d1e66048d458f4a42482418831dbdcdb2106a90fd"
+      }
+    },
+    {
+      "name": "two-leaves-already-sorted",
+      "input": {
+        "leafHashesHex": [
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        ]
+      },
+      "expected": {
+        "sortedLeafHashesHex": [
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        ],
+        "merkleRootHex": "bc6b943b820c449acf880d293c216a24a8066b153f87f2361fae2beda3a72641"
+      }
+    },
+    {
+      "name": "two-leaves-reversed-input-resorted",
+      "note": "Same content as the previous vector but submitted in reverse order. Sort produces the same canonical sequence; root identical.",
+      "input": {
+        "leafHashesHex": [
+          "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "0000000000000000000000000000000000000000000000000000000000000000"
+        ]
+      },
+      "expected": {
+        "sortedLeafHashesHex": [
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        ],
+        "merkleRootHex": "bc6b943b820c449acf880d293c216a24a8066b153f87f2361fae2beda3a72641"
+      }
+    },
+    {
+      "name": "three-leaves-odd-promotion",
+      "note": "Validates the §6.5 odd-leaf rule. Level 0 has 3 leaves; level 1 has [N(L0,L1), L2]; level 2 has [N(N(L0,L1), L2)].",
+      "input": {
+        "leafHashesHex": [
+          "0a00000000000000000000000000000000000000000000000000000000000001",
+          "0a00000000000000000000000000000000000000000000000000000000000002",
+          "0a00000000000000000000000000000000000000000000000000000000000003"
+        ]
+      },
+      "expected": {
+        "sortedLeafHashesHex": [
+          "0a00000000000000000000000000000000000000000000000000000000000001",
+          "0a00000000000000000000000000000000000000000000000000000000000002",
+          "0a00000000000000000000000000000000000000000000000000000000000003"
+        ],
+        "merkleRootHex": "7f869f56b032e4444f2682f9f5113f4c4577f407b8a001a9dc3f5b01e3e88634"
+      }
+    },
+    {
+      "name": "four-leaves-balanced",
+      "input": {
+        "leafHashesHex": [
+          "1000000000000000000000000000000000000000000000000000000000000001",
+          "1000000000000000000000000000000000000000000000000000000000000002",
+          "1000000000000000000000000000000000000000000000000000000000000003",
+          "1000000000000000000000000000000000000000000000000000000000000004"
+        ]
+      },
+      "expected": {
+        "merkleRootHex": "662df91d66ae435d448af483a10d8b7fc593d7b268b3cfcefdab32d341c9f65b",
+        "sortedLeafHashesHex": [
+          "1000000000000000000000000000000000000000000000000000000000000001",
+          "1000000000000000000000000000000000000000000000000000000000000002",
+          "1000000000000000000000000000000000000000000000000000000000000003",
+          "1000000000000000000000000000000000000000000000000000000000000004"
+        ]
+      }
+    },
+    {
+      "name": "eight-leaves-balanced",
+      "note": "Exercises two full levels of internal node hashing with no promotions.",
+      "input": {
+        "leafHashesHex": [
+          "2000000000000000000000000000000000000000000000000000000000000001",
+          "2000000000000000000000000000000000000000000000000000000000000002",
+          "2000000000000000000000000000000000000000000000000000000000000003",
+          "2000000000000000000000000000000000000000000000000000000000000004",
+          "2000000000000000000000000000000000000000000000000000000000000005",
+          "2000000000000000000000000000000000000000000000000000000000000006",
+          "2000000000000000000000000000000000000000000000000000000000000007",
+          "2000000000000000000000000000000000000000000000000000000000000008"
+        ]
+      },
+      "expected": {
+        "merkleRootHex": "6220006694617333e4a9d9388c60a2dd20676cba91e21edf6aac1eb8e4b35a9b",
+        "sortedLeafHashesHex": [
+          "2000000000000000000000000000000000000000000000000000000000000001",
+          "2000000000000000000000000000000000000000000000000000000000000002",
+          "2000000000000000000000000000000000000000000000000000000000000003",
+          "2000000000000000000000000000000000000000000000000000000000000004",
+          "2000000000000000000000000000000000000000000000000000000000000005",
+          "2000000000000000000000000000000000000000000000000000000000000006",
+          "2000000000000000000000000000000000000000000000000000000000000007",
+          "2000000000000000000000000000000000000000000000000000000000000008"
+        ]
+      }
+    },
+    {
+      "name": "duplicate-leaf-rejected",
+      "note": "§6.4 — duplicate leaves must be rejected before tree construction begins.",
+      "input": {
+        "leafHashesHex": [
+          "3000000000000000000000000000000000000000000000000000000000000001",
+          "3000000000000000000000000000000000000000000000000000000000000001"
+        ]
+      },
+      "expected": {
+        "error": "duplicate_leaf_hash",
+        "merkleRootHex": null
+      }
+    },
+    {
+      "name": "empty-tree-rejected",
+      "note": "§6.6 — empty leaf sets are forbidden.",
+      "input": {
+        "leafHashesHex": []
+      },
+      "expected": {
+        "error": "empty_leaf_set",
+        "merkleRootHex": null
+      }
+    }
+  ]
+}

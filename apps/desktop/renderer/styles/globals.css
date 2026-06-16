@@ -1,0 +1,19 @@
+@import 'tailwindcss';
+
+:root {
+  --color-accent: #007a87;
+  --color-border: #e5e5e5;
+  --color-sidebar: #f7f7f5;
+  --font-sans: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+button,
+input {
+  border-radius: 6px;
+}

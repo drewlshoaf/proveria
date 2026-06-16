@@ -1,0 +1,9 @@
+[workspace]
+members = ["apps/proveria-cli"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "UNLICENSED"
+version = "0.1.0"
+

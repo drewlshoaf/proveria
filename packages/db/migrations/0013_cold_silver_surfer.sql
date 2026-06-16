@@ -1,0 +1,1 @@
+ALTER TABLE "attestation_access_requests" ADD COLUMN "resolution_reason" text;

@@ -1,0 +1,1892 @@
+# Proveria V1 Engineering Plan
+
+> **Status:** Incorporates Product / Architecture decisions dated 2026-05-13. See [§30. Decision Log](#30-product--architecture-decision-log--2026-05-13) for the consolidated answers to Engineering's remaining planning questions.
+
+## 1. Executive Summary
+
+Proveria V1 is a desktop-first provenance platform that allows producers to create cryptographic attestations over files and document content without uploading plaintext materials to Proveria.
+
+The core V1 product loop is:
+
+> **Producer pairs desktop app → creates/selects project → selects local files → hashes/shingles locally → signs manifest → uploads cryptographic metadata → Proveria validates → attestation confirms → consumer performs scoped verification → Proveria generates proof/result package and PDF receipt.**
+
+The product must preserve the central trust principle:
+
+> **Proveria does not ingest customer plaintext.**
+
+Hashing, shingling, PDF extraction, and OCR happen locally inside the desktop app. Proveria receives only cryptographic metadata, manifests, Merkle trees, signatures, receipts, proof packages, and audit records. This aligns with the Proveria architectural ledger: local hashing/shingling, no plaintext ingestion, cryptographic receipts, optional blockchain anchoring, and enterprise-grade auditability. 
+
+---
+
+# 2. V1 Product Scope
+
+## 2.1 Included in V1
+
+V1 includes:
+
+| Area              | V1 Scope                                                             |
+| ----------------- | -------------------------------------------------------------------- |
+| Corporate site    | Public Proveria marketing/corporate website                          |
+| Web portal        | Producer/admin/consumer portal                                       |
+| Desktop app       | Electron-based Mac/Windows producer app                              |
+| Backend API       | Fastify + TypeScript REST API                                        |
+| Worker service    | BullMQ/Redis async worker                                            |
+| Database          | PostgreSQL with Drizzle                                              |
+| Object storage    | S3-compatible object store; MinIO locally                            |
+| Auth              | In-house email/password auth                                         |
+| Tenancy           | Multi-tenant model from day one                                      |
+| Roles             | Tenant Admin, Producer, Consumer                                     |
+| Device pairing    | Browser-mediated tenant-scoped desktop pairing                       |
+| Attestations      | Desktop-only producer attestation creation                           |
+| Hashing           | SHA-256 whole-file hashing                                           |
+| Shingling         | Team/Enterprise text/PDF shingling                                   |
+| OCR               | Bundled local OCR for scanned PDFs                                   |
+| Merkle validation | Desktop creates Merkle tree; server recomputes from submitted leaves |
+| Receipts          | Canonical signed JSON + worker-rendered PDF                          |
+| Consumer lookup   | Scoped self-service hash lookup only                                 |
+| Proof packages    | Automatic match/no-match result packages                             |
+| Audit             | Tiered audit logging                                                 |
+| Packaging tiers   | Free, Team Starter, Team Pro, Enterprise                             |
+| Local dev         | Docker Compose for backend services                                  |
+
+---
+
+## 2.2 Explicitly Deferred
+
+Deferred from V1:
+
+| Deferred Area                        | Notes                                                 |
+| ------------------------------------ | ----------------------------------------------------- |
+| APIs/SDKs/webhooks                   | Later Enterprise/platform version                     |
+| Storage connectors                   | Google Drive, Box, Azure Blob deferred                |
+| Browser file upload/checking         | Consumers provide hashes generated outside browser    |
+| Global hash search                   | No global discovery of matching projects/attestations |
+| Full verification request workflow   | No producer approval/ticket workflow in V1            |
+| Custom tenant templates              | Fixed system templates only                           |
+| Branding customization               | Standard Proveria branding only                       |
+| SSO/SAML/OIDC                        | Later Enterprise feature                              |
+| Transactional email                  | Codes logged in V1; email provider later              |
+| Silent auto-update                   | Deferred; forced-version check is required for pilot  |
+| Multi-region deployment              | Single-region pilot (AWS `us-east-1`); see §6.3       |
+| Custom RBAC                          | Simple roles only                                     |
+| Advanced retention policies          | Later Enterprise feature                              |
+| Tenant-managed storage connectors    | Deferred                                              |
+| Perceptual image/video/audio hashing | V2 crypto/protocol topic                              |
+| Semantic similarity verification     | V2 topic                                              |
+| Full customer API surface            | Deferred                                              |
+| Billing / payments / Stripe          | Deferred to V1.1; V1 paid tiers are sales-mediated    |
+| Self-serve paid plan upgrades        | Deferred; paid tenants are manually provisioned in V1 |
+| Full support tooling                 | Deferred; minimal read-only admin view ships in V1    |
+
+---
+
+# 3. Packaging and Tier Model
+
+## 3.1 Free
+
+Free is a public, self-verifiable entry tier.
+
+| Capability               |                 Free |
+| ------------------------ | -------------------: |
+| Desktop app              |                  Yes |
+| Tenant/device pairing    |                  Yes |
+| Public projects          |              Up to 5 |
+| Attestations             |        1 per project |
+| Whole-file hashing       |                  Yes |
+| Shingling                |                   No |
+| OCR/shingle verification |                   No |
+| Private projects         |                   No |
+| Verification requests    |                   No |
+| Proveria-signed receipts |                   No |
+| Blockchain anchoring     |                   No |
+| Public scoped attestation pages | Yes              |
+| Global hash search       |                   No |
+| Proof bundles            | Self-verifiable only |
+
+Trust label:
+
+> **Self-verifiable public attestation pages — not Proveria-signed**
+
+Free includes public scoped attestation pages reachable by direct URL, QR code, or reference ID. Free does not include a global searchable registry. Pasting a hash into Proveria does not return a list of public attestations containing that hash.
+
+Free uses the same tenant/device model as other tiers. Each Free user has a personal tenant behind the scenes.
+
+---
+
+## 3.2 Team Starter
+
+| Capability                  |        Team Starter |
+| --------------------------- | ------------------: |
+| Users                       |                   3 |
+| Storage / retained metadata |               25 GB |
+| Attestations                |            50/month |
+| Verifications               | Unlimited, fair use |
+| Private projects            |                 Yes |
+| Desktop app                 |                 Yes |
+| Advanced CLI/hash utility   |                 Yes |
+| Shingling                   |                 Yes |
+| OCR                         |                 Yes |
+| Proveria-signed receipts    |                 Yes |
+| Basic audit logging         |                 Yes |
+| Storage connectors          |              Not V1 |
+| APIs/SDKs/webhooks          |                  No |
+| Blockchain anchoring        |                  No |
+| Customer-managed signing    |                  No |
+
+---
+
+## 3.3 Team Pro
+
+| Capability                  |             Team Pro |
+| --------------------------- | -------------------: |
+| Users                       |                   10 |
+| Storage / retained metadata |               250 GB |
+| Attestations                |            500/month |
+| Verifications               |  Unlimited, fair use |
+| Feature set                 | Same as Team Starter |
+
+Team Starter and Team Pro differ only by scale limits, not by feature availability.
+
+Trust label:
+
+> **Proveria-signed managed provenance**
+
+---
+
+## 3.4 Enterprise
+
+Enterprise includes everything in Team Pro plus configurable high-assurance capabilities.
+
+| Capability               |            Enterprise |
+| ------------------------ | --------------------: |
+| Custom limits            |                   Yes |
+| Complete audit logging   |                   Yes |
+| Hash-chained audit       |                   Yes |
+| Customer-managed signing | Optional/configurable |
+| Arbitrum anchoring       | Optional/configurable |
+| APIs/SDKs/webhooks       |    Deferred beyond V1 |
+| Advanced retention       |              Deferred |
+| SSO/SAML/OIDC            |              Deferred |
+
+Updated trust label:
+
+> **Configurable high-assurance provenance with optional customer-managed signing and optional Arbitrum anchoring**
+
+Enterprise should support three operating modes:
+
+| Mode                        | Description                                                         |
+| --------------------------- | ------------------------------------------------------------------- |
+| Proveria-managed Enterprise | Device signature + Proveria signature, no customer key              |
+| Customer-managed signing    | Customer key signs attestations/receipts                            |
+| Anchored Enterprise         | Confirmed attestation roots and/or audit roots anchored to Arbitrum |
+
+---
+
+# 4. Monorepo Architecture
+
+## 4.1 Repository Structure
+
+Engineering bootstraps a new pnpm/Turborepo monorepo at the repo root.
+
+GitHub organization/owner: **TBD** — to be provided by the business owner before Milestone 1 begins. The repo name is `proveria`.
+
+```txt
+/proveria
+  pnpm-workspace.yaml
+  turbo.json
+  package.json
+  docker-compose.yml
+
+  /apps
+    /portal
+    /api
+    /worker
+    /desktop
+    /hash-cli
+
+  /packages
+    /ui
+    /config
+    /shared-types
+    /crypto-core
+    /manifest
+    /proofs
+    /receipt
+    /audit
+    /db
+
+  /docs
+    /protocol
+    /architecture
+    /ops
+    /product
+
+  /infra
+    /docker
+    /db
+    /scripts
+```
+
+`/docs` is reserved for documentation only — no application code lives there. Protocol specs and their test vectors live in `/docs/protocol` so implementation, docs, and tests version-lock together. See §26.3 for the spec-authoring process.
+
+## 4.2 Apps
+
+| App              | Stack                           | Responsibility                                 |
+| ---------------- | ------------------------------- | ---------------------------------------------- |
+| `apps/portal`    | Next.js + TypeScript + Tailwind | Authenticated producer/admin/consumer portal   |
+| `apps/api`       | Fastify + TypeScript            | REST API                                       |
+| `apps/worker`    | Node.js + TypeScript + BullMQ   | Async validation, receipts, proofs, audit jobs |
+| `apps/desktop`   | Electron + TypeScript           | Local producer attestation workflow            |
+| `apps/hash-cli`  | TypeScript CLI                  | Local consumer hash generation utility         |
+
+## 4.3 Shared Packages
+
+| Package                 | Responsibility                                       |
+| ----------------------- | ---------------------------------------------------- |
+| `packages/ui`           | Shared React components for Proveria web surfaces    |
+| `packages/config`       | Shared config loading/typing                         |
+| `packages/shared-types` | Shared DTOs, enums, domain types                     |
+| `packages/crypto-core`  | Hashing, Merkle tree, signatures, canonicalization   |
+| `packages/manifest`     | Manifest schema, validation, serialization           |
+| `packages/proofs`       | Proof/result package schema and verification helpers |
+| `packages/receipt`      | Signed JSON + PDF receipt rendering templates        |
+| `packages/audit`        | Audit event types and hash-chain helpers             |
+| `packages/db`           | Drizzle schema and migrations                        |
+
+---
+
+# 5. Local Development and Containers
+
+## 5.1 Docker Compose Services
+
+Every backend/web service gets its own container.
+
+| Container        | Purpose                                    |
+| ---------------- | ------------------------------------------ |
+| `portal`         | Authenticated portal                       |
+| `api`            | Backend REST API                           |
+| `worker`         | Background jobs                            |
+| `postgres`       | Primary relational DB                      |
+| `redis`          | BullMQ queue backend                       |
+| `minio`          | Local S3-compatible object store           |
+| `desktop-build`  | Optional desktop build/package environment |
+| `hash-cli-build` | Optional CLI build/package environment     |
+
+## 5.2 Desktop Development
+
+The Electron desktop app lives in:
+
+```txt
+/apps/desktop
+```
+
+During development, it runs directly on the developer’s Mac/Windows machine, while backend dependencies run in Docker Compose.
+
+```txt
+Electron desktop app on Mac/Windows
+        ↓
+local API container
+        ↓
+Postgres / Redis / MinIO containers
+```
+
+The desktop app should run locally during dev because it needs:
+
+* filesystem access
+* native file picker
+* OS credential vault access
+* local signing key storage
+* OCR binaries
+* app packaging/signing later
+
+---
+
+# 6. Backend Architecture
+
+## 6.1 Service Split
+
+V1 uses separate services, but not excessive microservices.
+
+| Service        | Responsibility                                                              |
+| -------------- | --------------------------------------------------------------------------- |
+| Web portal     | Producer/admin/consumer UI                                                  |
+| API service    | Auth, tenancy, devices, projects, attestations, lookup, access grants       |
+| Worker service | Validation, proof generation, receipt generation, PDF rendering, audit jobs |
+| Database       | Canonical relational app state                                              |
+| Object storage | Immutable manifests, receipts, proof bundles, exports                       |
+| Queue          | Async job orchestration                                                     |
+
+Architectural posture:
+
+> **Separate deployable processes, shared monorepo, clear boundaries.**
+
+## 6.2 API Framework
+
+Use:
+
+> **Fastify + TypeScript + REST + OpenAPI**
+
+Reasons:
+
+* Lightweight
+* Strong schema validation
+* Clear REST resource model
+* Easier enterprise review
+* Better fit for attestations, receipts, proofs, projects, and audit trails
+* Easier SDK generation later
+
+No GraphQL in V1.
+
+## 6.3 Pilot Deployment Target
+
+V1 pilot deploys to **AWS, single-region, default `us-east-1`**. Multi-region deployment is deferred to V2 (see §28).
+
+| Component       | Pilot target                                                                  |
+| --------------- | ----------------------------------------------------------------------------- |
+| App containers  | AWS ECS/Fargate (single EC2 Docker host acceptable as an interim accelerator) |
+| Postgres        | RDS Postgres                                                                  |
+| Object storage  | S3                                                                            |
+| Queue / Redis   | ElastiCache Redis; containerized Redis acceptable for the earliest pilot     |
+| Secrets         | AWS Secrets Manager or SSM Parameter Store                                    |
+| Transactional email | Resend by default; SES interchangeable behind the notification adapter   |
+| Logs            | CloudWatch                                                                    |
+| Corp site       | Deployed with the app stack initially; may move to static hosting later       |
+
+Intended production-like path is **ECS/Fargate + RDS + S3 + ElastiCache**. Milestone 1 does not require standing this up — Milestone 1 targets local Docker Compose with MinIO. AWS deployment readiness lands at Milestone 15 (see §26.1).
+
+> **Local dev remains Docker Compose with MinIO. Pilot/production runs on AWS in `us-east-1`.**
+
+---
+
+# 7. Data Storage
+
+## 7.1 PostgreSQL
+
+PostgreSQL stores canonical relational state:
+
+* tenants
+* users
+* sessions
+* roles
+* devices
+* projects
+* templates
+* attestations
+* submission attempts
+* object references
+* access grants
+* verification results
+* link records
+* plan/entitlement state
+* audit indexes
+
+Use:
+
+> **Drizzle ORM + explicit migrations**
+
+Reason: Proveria’s schema is part of the trust system. We need transparent constraints, indexes, immutable records, and clear migration history.
+
+## 7.2 Object Storage
+
+Use S3-compatible object storage.
+
+Local development:
+
+> **MinIO**
+
+Production target:
+
+> **S3 or equivalent**
+
+Object storage contains:
+
+* manifests
+* Merkle leaf sets
+* validation results
+* signed JSON receipts
+* proof/result packages
+* rendered PDFs
+* evidence exports
+* audit exports
+
+## 7.3 Immutable Object Keys
+
+Object-store artifacts are immutable once written.
+
+Each submission attempt gets its own prefix.
+
+```txt
+/tenants/{tenant_id}/projects/{project_id}/attestations/{attestation_id}/attempts/{attempt_id}/manifest.json
+/tenants/{tenant_id}/projects/{project_id}/attestations/{attestation_id}/attempts/{attempt_id}/leaves.jsonl
+/tenants/{tenant_id}/projects/{project_id}/attestations/{attestation_id}/attempts/{attempt_id}/validation-result.json
+```
+
+The database points to the canonical confirmed attempt.
+
+```txt
+attestation.confirmed_attempt_id
+attestation.manifest_object_key
+attestation.leaves_object_key
+attestation.receipt_json_object_key
+attestation.receipt_pdf_object_key
+```
+
+Failed attempts are retained for auditability and repair history.
+
+---
+
+# 8. Auth, Tenancy, and Roles
+
+## 8.1 Auth
+
+Build auth in-house.
+
+V1 includes:
+
+| Capability                       | V1                                     |
+| -------------------------------- | -------------------------------------- |
+| Email/password login             | Yes                                    |
+| Argon2id password hashing        | Yes                                    |
+| Secure HTTP-only session cookies | Yes                                    |
+| Email verification               | Code generated and logged              |
+| Password reset                   | Code generated and logged              |
+| Transactional email              | Deferred                               |
+| MFA                              | Deferred                               |
+| SSO/SAML/OIDC                    | Deferred                               |
+| Magic links                      | Deferred unless needed for invite flow |
+
+Use a notification adapter abstraction:
+
+```txt
+LogNotificationProvider → EmailNotificationProvider
+```
+
+Provider selection is environment-driven, not deferred:
+
+| Environment              | Provider                                        |
+| ------------------------ | ----------------------------------------------- |
+| Local development        | `LogNotificationProvider` (codes logged)        |
+| Internal demo            | `LogNotificationProvider` acceptable            |
+| Pilot/staging/production | `EmailNotificationProvider` required            |
+
+V1 pilot ships with a real transactional email provider (Resend by default; SES/Postmark interchangeable behind the same interface). Codes must not be logged in production.
+
+## 8.2 Tenancy
+
+All users belong to at least one tenant.
+
+Free users get a personal tenant.
+
+Tenant model applies uniformly across tiers:
+
+* Free
+* Team Starter
+* Team Pro
+* Enterprise
+
+This avoids migration complexity when a Free user upgrades.
+
+## 8.3 Roles
+
+V1 roles:
+
+| Role         | Description                       |
+| ------------ | --------------------------------- |
+| Tenant Admin | Full tenant operator              |
+| Producer     | Creates projects and attestations |
+| Consumer     | Web-only verification user        |
+
+No custom RBAC in V1.
+
+## 8.4 Tenant Signup Flow
+
+V1 separates signup paths by tier:
+
+| Tier               | V1 Signup                              |
+| ------------------ | -------------------------------------- |
+| Free               | Self-serve                             |
+| Team Starter / Pro | Sales-mediated / manually provisioned  |
+| Enterprise         | Sales-mediated / manually provisioned  |
+
+Free users self-register through the portal and receive an automatically-created personal tenant. Paid tenants are provisioned by internal/admin tooling or seed scripts during pilot — there is no self-serve payment, plan upgrade, or invoice flow in V1. Billing/payments/Stripe are deferred to V1.1 (see §28).
+
+This deferral keeps payment, entitlement, onboarding, and pilot support complexity out of V1.
+
+## 8.5 Role Capabilities
+
+| Capability                 | Tenant Admin |         Producer |         Consumer |
+| -------------------------- | -----------: | ---------------: | ---------------: |
+| Use portal                 |          Yes |              Yes |              Yes |
+| Use desktop app            |          Yes |              Yes |               No |
+| Pair desktop device        |          Yes |              Yes |               No |
+| Create project             |          Yes |  Yes, if allowed |               No |
+| Create attestation         |          Yes |              Yes |               No |
+| Archive/restore project    |          Yes |               No |               No |
+| Invite/authorize consumers |          Yes |               No |               No |
+| Revoke/rotate links        |          Yes |               No |               No |
+| View tenant audit          |          Yes |          Limited |               No |
+| View lookup history        |  Tenant-wide | Own attestations | Own results only |
+
+---
+
+# 9. Desktop App Architecture
+
+## 9.1 Framework
+
+Use:
+
+> **Electron + TypeScript**
+
+Rationale:
+
+* Cross-platform Mac/Windows
+* Shared TypeScript with portal/API/CLI packages
+* Mature app distribution model
+* Strong enough for hashing, shingling, OCR orchestration, manifests, uploads, and local drafts
+* Native worker process can be introduced later if performance requires it
+
+## 9.2 Desktop Responsibilities
+
+Desktop app performs:
+
+* tenant-scoped device pairing
+* local project creation
+* template selection
+* attestation wizard
+* local file/folder selection
+* automatic exclusion policy application
+* whole-file hashing
+* text/PDF extraction
+* OCR fallback
+* shingling
+* Merkle tree generation
+* manifest generation
+* manifest signing
+* encrypted local drafts
+* incremental processing cache
+* freshness checks before submission
+* upload of cryptographic metadata only
+* repair/resubmit for validation failures
+
+## 9.3 Device Pairing
+
+Desktop app does not collect passwords directly.
+
+Flow:
+
+1. Desktop app shows pairing code or opens browser.
+2. User logs into web portal.
+3. User approves device for tenant.
+4. Device creates/stores local credential/key.
+5. Public key/device record registered with Proveria.
+6. Device token/key stored in OS secure storage.
+7. Tenant Admin can revoke device later.
+
+Pairing is:
+
+* tenant-scoped
+* per user
+* per device
+* separately revocable
+* audit logged
+
+A single desktop installation can support multiple local profiles, but each profile is isolated by:
+
+```txt
+tenant_id + user_id + device_id + profile_id
+```
+
+Profile namespacing is explicit V1 scope (Milestone 2). It applies to local draft storage, local processing cache, signing keys, OS keychain entries, desktop profile selection, audit events, server device records, and revocation behavior.
+
+## 9.4 Desktop Drafts
+
+Local drafts are supported.
+
+Draft behavior:
+
+* stored locally
+* encrypted at rest using a key held in the OS credential vault/keychain
+* scoped to `{tenant_id, user_id, device_id, profile_id}`
+* can be deleted freely
+* not server-visible until upload/submission
+* stores references and metadata, not copied source file contents
+* re-checks source freshness on resume
+
+Recovery boundary:
+
+> **Local drafts are unrecoverable if the local encryption key is lost.** OS reinstall, keychain deletion, or removal of the desktop profile makes drafts unreadable. Producers must be warned in-app before investing significant work in drafts.
+
+Drafts store:
+
+* selected paths
+* wizard state
+* template choices
+* policy settings
+* inclusion/exclusion preview
+* processing state
+* cached hashes/shingles where valid
+
+## 9.5 Incremental Processing
+
+The desktop app should process incrementally after source selection and settings confirmation.
+
+Flow:
+
+```txt
+source selection
+  → scan
+  → apply exclusions
+  → hash/shingle/OCR incrementally
+  → cache encrypted processing state
+  → review
+  → final freshness check
+  → manifest/Merkle root generation
+  → sign
+  → submit
+```
+
+Incremental processing does not create an attestation until explicit submission.
+
+---
+
+# 10. Project and Template Model
+
+## 10.1 Projects
+
+Projects are tenant-scoped containers for attestations.
+
+V1 project features:
+
+* created from desktop or portal
+* private by default for paid tiers
+* public-only for Free
+* fixed system template selection
+* classification/tags
+* project-level overrides
+* archive/restore by Tenant Admin only
+* no hard deletion in V1
+
+Archived projects:
+
+* cannot receive new attestations
+* remain visible to admins
+* remain verifiable if access remains valid
+* retain receipts/proofs/audit history
+
+## 10.2 Fixed System Templates
+
+V1 uses fixed system templates only.
+
+Recommended templates:
+
+| Template               | Use Case                               |
+| ---------------------- | -------------------------------------- |
+| General Provenance     | Default catch-all                      |
+| AI Training Corpus     | Model/content provenance               |
+| Legal Evidence Package | Litigation/discovery/case files        |
+| Research Dataset       | Research materials                     |
+| Software Release       | Source archives/binaries/releases      |
+| Media Archive          | Image/video/audio/document collections |
+
+No tenant-created or tenant-edited templates in V1.
+
+## 10.3 Overrides
+
+Templates provide defaults.
+
+V1 allows controlled overrides at:
+
+* project level
+* attestation level
+
+Allowed override examples:
+
+* project name
+* attestation label
+* classification
+* tags
+* terminology overrides
+* artifact expectations
+* shingling preset, if allowed
+* receipt instructions
+* verification instructions
+
+Overrides cannot weaken tenant/project/template policy.
+
+---
+
+# 11. Attestation Model
+
+## 11.1 Attestation Creation
+
+Producer attestations are desktop-only in V1.
+
+No web upload of source material.
+
+No web upload of manually precomputed manifests in V1.
+
+The desktop wizard is the primary producer workflow.
+
+## 11.2 Attestation Labels
+
+Attestation labels must be unique within a project.
+
+Rules:
+
+* unique per project
+* reusable across different projects
+* editable while local draft
+* not editable once confirmed
+* stable internal immutable ID always exists
+* labels remain reserved while the attestation record exists, including canceled/failed pre-confirmation attempts
+
+Label release escape hatch:
+
+> **Tenant Admins may release a reserved label from a canceled or failed pre-confirmation attestation.** Confirmed attestations are never eligible. Released labels become reusable within the project. The release action is audit-logged. The original attestation retains its immutable internal ID and historical label record.
+
+## 11.3 Lifecycle States
+
+Recommended V1 states:
+
+```txt
+draft_local
+uploaded
+validation_failed
+validated
+queued_for_publication
+publishing
+confirming
+confirmed
+canceled
+failed_needs_review
+```
+
+Local-only drafts do not exist as server attestations.
+
+## 11.4 Cancellation and Repair
+
+Rules:
+
+| State                  | Behavior                                      |
+| ---------------------- | --------------------------------------------- |
+| Local draft            | Can delete freely                             |
+| Uploaded/pre-confirmed | Can cancel                                    |
+| Validation failed      | Can repair/resubmit same attestation record   |
+| Confirmed              | Immutable; cannot cancel/delete/rename/modify |
+
+Repair/resubmit model:
+
+* stable `attestation_id`
+* new `submission_attempt_id` per upload
+* failed attempts retained
+* final confirmed attempt becomes canonical
+
+## 11.5 Auto Confirmation
+
+After desktop submission:
+
+```txt
+uploaded → validation → queued_for_publication → publishing → confirming → confirmed
+```
+
+No second approval step after validation.
+
+The desktop wizard review step is the producer approval moment.
+
+---
+
+# 12. Hashing, Shingling, OCR, and Merkle Trees
+
+## 12.1 Hashing
+
+V1 default:
+
+> **SHA-256**
+
+Used for:
+
+* whole-file hashes
+* shingle hashes
+* object/package hashes
+* manifest/package integrity
+
+All hashes include algorithm/version metadata.
+
+## 12.2 Whole-File Hashing
+
+Supported across all tiers.
+
+Free is whole-file only.
+
+Whole-file hash leaves appear in the attestation Merkle tree.
+
+## 12.3 Shingling
+
+Supported for:
+
+* Team Starter
+* Team Pro
+* Enterprise
+
+Not supported for Free.
+
+V1 shingling applies to:
+
+* text files
+* PDFs with native text
+* scanned PDFs via OCR fallback
+
+V1 shingle presets:
+
+* `standard`
+* `broad`
+* `sensitive`
+
+Presets are controlled by system templates/policy.
+
+Shingle plaintext never leaves the desktop app.
+
+## 12.4 OCR
+
+V1 supports local OCR for scanned PDFs.
+
+Engine selection:
+
+> **Tesseract is the V1 OCR engine, version-pinned in the desktop app and recorded in the manifest.**
+
+OCR V1 spec must evaluate two packaging paths before final implementation:
+
+1. Native bundled Tesseract binaries
+2. Tesseract.js / WASM
+
+Evaluation criteria include Mac universal packaging, Windows x64/arm64 packaging, code signing/notarization impact, installer size, performance on large PDFs, memory use, language pack handling, confidence score behavior, and licensing.
+
+Default preference is native bundled Tesseract; fall back to Tesseract.js only if native packaging creates unacceptable distribution risk.
+
+Language packs:
+
+> **English only by default in V1.** Additional language packs are post-V1 or Enterprise-configurable.
+
+Rules:
+
+* OCR bundled inside desktop app
+* no separate dependency installation
+* OCR text treated as local derived plaintext
+* OCR text never uploaded
+* OCR engine/version/language-pack version recorded in metadata
+* confidence/warnings shown locally
+* extracted text preview available locally
+* no manual OCR text editing in V1
+* OCR-derived shingle coverage must be visibly marked as OCR-derived in receipts
+
+Confidence threshold:
+
+* compute page-level mean word confidence where available
+* mark page as low-confidence if mean confidence is below a numerical threshold
+* starting threshold: **80%** (tunable after test-corpus evaluation)
+
+Failure behavior:
+
+| Scenario                                  | Behavior                                      |
+| ----------------------------------------- | --------------------------------------------- |
+| Whole-file hash succeeds, shingling fails | Include whole-file only if producer continues |
+| OCR fails                                 | File can be included as whole-file only       |
+| Whole-file hash fails                     | File cannot be included                       |
+| Low OCR confidence                        | Warning recorded; producer may continue       |
+| Failed files                              | Never silently included                       |
+
+### OCR test corpus
+
+Engineering assembles the initial OCR V1 test corpus from **public, non-sensitive sources**. Product/Architecture supplements later with representative real-world examples as they become available.
+
+| Category      | Examples                                      |
+| ------------- | --------------------------------------------- |
+| Legal         | Scanned contracts, exhibits, court-style PDFs |
+| Research      | Scanned papers, tables, footnotes             |
+| Business docs | Invoices, memos, reports                      |
+| Media/archive | Mixed-layout PDFs, captions, image-heavy docs |
+| Low quality   | Skewed scans, low contrast, rotated pages     |
+| Native PDFs   | Text-layer PDFs for extraction comparison     |
+
+> **No customer or private documents are admitted to the OCR test corpus unless explicitly approved and sanitized.**
+
+## 12.5 Merkle Tree
+
+One canonical Merkle tree per attestation.
+
+Leaves may include:
+
+* whole-file hashes
+* component hashes
+* shingle hashes
+
+Rules:
+
+* deterministic leaf ordering
+* leaf type/count metadata stored
+* duplicate leaf detection
+* server recomputes Merkle root from submitted leaves
+* confirmed Merkle root becomes canonical
+
+---
+
+# 13. Manifest Schema
+
+Manifest is canonical JSON serialized per RFC 8785 (JCS).
+
+Recommended top-level fields:
+
+```json
+{
+  "schema_version": "1.0",
+  "protocol_version": "1.0",
+  "canonicalization_version": "1.0",
+  "merkle_version": "1.0",
+  "hash_algorithm": "sha256",
+  "hash_algorithm_version": "1.0",
+  "shingling_version": "1.0",
+  "ocr_extraction_version": "1.0",
+  "tenant_id": "...",
+  "project_id": "...",
+  "attestation_id": "...",
+  "attempt_id": "...",
+  "created_by_user_id": "...",
+  "created_by_device_id": "...",
+  "created_by_profile_id": "...",
+  "template_id": "...",
+  "policy_context": {},
+  "source_summary": {},
+  "extraction_metadata": {},
+  "leaf_set": [],
+  "leaf_counts": {},
+  "merkle_root": "...",
+  "signatures": [],
+  "created_at": "..."
+}
+```
+
+Manifest must include:
+
+* schema version
+* protocol version
+* canonicalization version
+* Merkle version
+* hash algorithm and version
+* shingling preset/version when applicable
+* extraction method metadata
+* OCR engine/version/language-pack version when applicable
+* leaf set references or embedded leaf metadata
+* Merkle root
+* desktop/device signature
+* customer-managed signature if enabled
+* policy context
+
+Encoding rules:
+
+* JSON canonicalization: **RFC 8785 (JCS)**
+* JSON-embedded hashes: **lowercase hex**
+* No floats in cryptographic payloads. Counts and byte sizes are integers; timestamps are ISO 8601 strings (or integer epoch milliseconds where machine comparison is required); IDs and versions are strings.
+
+---
+
+# 14. Server Validation
+
+Server validation includes:
+
+* schema validation
+* tenant/project/user permission checks
+* device authorization
+* device signature verification
+* template/policy compliance
+* attestation label uniqueness
+* plan entitlement checks
+* allowed artifact/shingle policy
+* hash algorithm/version checks
+* deterministic leaf ordering
+* duplicate leaf detection
+* leaf count consistency
+* Merkle root recomputation
+* object-store artifact consistency
+* receipt/proof package consistency
+
+Boundary:
+
+> **The server does not recompute hashes from plaintext artifacts because Proveria never receives plaintext.**
+
+It validates that the submitted cryptographic metadata is internally consistent, authorized, signed, and policy-compliant.
+
+## 14.1 Merkle Leaf and Node Encoding
+
+Protocol V1 mandates binary-safe, domain-separated leaf and node encoding.
+
+Leaf hash input:
+
+```txt
+leaf_hash_input =
+  0x00
+  || length_prefixed(protocol_version)
+  || length_prefixed(leaf_type)
+  || length_prefixed(hash_algorithm)
+  || length_prefixed(canonical_payload_hash)
+```
+
+Internal node hash input:
+
+```txt
+node_hash_input =
+  0x01
+  || left_child_hash
+  || right_child_hash
+```
+
+Rules:
+
+* leaves are domain-separated from internal nodes via prefix bytes (`0x00` / `0x01`)
+* all variable-length components are length-prefixed
+* byte order is explicit and documented in the Protocol V1 spec
+* odd leaf counts: handling specified in Protocol V1 (default candidate: promote final unpaired hash upward unchanged; alternatives evaluated in the spec draft)
+* JSON-embedded hashes use lowercase hex
+* no floats in cryptographic payloads
+
+## 14.2 Verifier Versioning
+
+Verifier implementation must dispatch by protocol version:
+
+```txt
+protocol_version → verifier implementation
+```
+
+Confirmed attestations remain valid under the protocol version they were created with. Verifiers must support all non-revoked historical protocol versions for as long as artifacts under those versions remain valid.
+
+| Scenario                                          | Behavior                                                                              |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Protocol V1.0 ships                               | V1.0 attestations remain valid under V1.0 rules                                       |
+| V1.1 adds non-breaking feature                    | New attestations may use V1.1; old V1.0 remains valid                                 |
+| V1.1 fixes minor ambiguity without security issue | Keep V1.0 verifier; mark V1.1 preferred                                               |
+| V1.0 has security-impacting flaw                  | Mark V1.0 as legacy/risk-qualified; require explicit verifier warning                 |
+| Catastrophic flaw                                 | Disable new V1.0 attestations; preserve historical records with warning/legacy status |
+
+---
+
+# 15. Signing Model
+
+## 15.1 Signing Layers
+
+| Signing Type                           | Free | Team | Enterprise |
+| -------------------------------------- | ---: | ---: | ---------: |
+| Desktop/user/device manifest signature |  Yes |  Yes |        Yes |
+| Proveria platform signature            |   No |  Yes |        Yes |
+| Customer-managed signing               |   No |   No |   Optional |
+| Blockchain anchoring                   |   No |   No |   Optional |
+
+## 15.1.1 V1 Algorithm Posture
+
+| Signing layer                  | V1 algorithm posture                                             |
+| ------------------------------ | ---------------------------------------------------------------- |
+| Desktop / device manifest      | **Ed25519** (required)                                           |
+| Proveria platform signature    | **Ed25519** recommended unless infrastructure requires otherwise |
+| Customer-managed signing (Ent.) | Enterprise-configurable; may follow customer KMS/HSM constraints |
+
+Ed25519 is V1's default device-signing algorithm: small keys, fast sign/verify, deterministic signatures, fewer curve-misuse footguns, and good fit for local desktop/device identity. Desktop/device signing is **not** required to be HSM-compatible in V1 — enterprise KMS/HSM concerns are handled separately by the customer-managed signing layer in §15.4.
+
+## 15.2 Desktop Manifest Signing
+
+All desktop submissions are signed by the paired desktop/user/device credential using **Ed25519** (see §15.1.1).
+
+Purpose:
+
+> Proves the manifest came from an authorized paired desktop/user/device for a tenant.
+
+## 15.3 Proveria Signing
+
+Team and Enterprise receipts/result packages are Proveria-signed.
+
+Purpose:
+
+> Proves Proveria validated and issued the receipt/result package.
+
+## 15.4 Customer-Managed Signing
+
+Enterprise optional.
+
+Applies to both:
+
+* attestations
+* receipts/result packages
+
+Can later integrate with:
+
+* AWS KMS
+* Azure Key Vault
+* Google Cloud KMS
+* HSMs
+* enterprise key systems
+
+---
+
+# 16. Consumer Verification and Lookup
+
+## 16.1 Lookup Scope
+
+V1 supports scoped lookup only.
+
+No global hash search. No global searchable registry.
+
+Consumers verify against:
+
+* a specific public Free attestation (reached via direct URL, QR code, or reference ID)
+* or a specific private Team/Enterprise attestation they are authorized to access
+
+## 16.2 Private Access
+
+Team/Enterprise private lookup requires:
+
+* consumer login
+* explicit authorization
+* attestation-specific access grant
+
+An unguessable link alone is not authorization.
+
+Tenant Admins manage consumer access.
+
+Producers cannot invite/authorize consumers.
+
+## 16.3 Pre-Lookup Metadata
+
+Use one fixed conservative metadata policy in V1.
+
+Show before lookup:
+
+| Metadata                    |              Show? |
+| --------------------------- | -----------------: |
+| Producer organization       |                Yes |
+| Project display name        |                Yes |
+| Attestation label           |                Yes |
+| Confirmation timestamp      |                Yes |
+| Coverage type               |                Yes |
+| Hash algorithm/version      |                Yes |
+| Signature status            |                Yes |
+| Blockchain anchoring status | Yes, if applicable |
+
+Hide before lookup:
+
+* artifact count
+* shingle count
+* file names
+* file paths
+* full manifest
+* excluded/failed file details
+* proof paths
+
+## 16.4 Lookup Results
+
+Every lookup generates a durable result package.
+
+Match result includes:
+
+* submitted hash
+* matched attestation
+* match type
+* Merkle proof path
+* Merkle root
+* signature status
+* package reference
+
+No-match result includes:
+
+* submitted hash
+* scoped attestation checked
+* confirmation timestamp
+* Merkle root
+* hash algorithm/version
+* signed no-match statement
+* verification timestamp
+
+Important claim language:
+
+> “This hash was not present in this specific attestation’s committed hash set.”
+
+Never claim universal absence.
+
+---
+
+# 17. Proof and Result Packages
+
+## 17.1 Canonical JSON Package
+
+Every lookup generates canonical JSON.
+
+Recommended fields:
+
+```json
+{
+  "schema_version": "1.0",
+  "protocol_version": "1.0",
+  "canonicalization_version": "1.0",
+  "merkle_version": "1.0",
+  "verifier_version": "1.0",
+  "package_id": "...",
+  "result_type": "match | no_match",
+  "submitted_hash": "...",
+  "hash_algorithm": "sha256",
+  "hash_algorithm_version": "1.0",
+  "lookup_scope": {
+    "tenant_id": "...",
+    "project_id": "...",
+    "attestation_id": "..."
+  },
+  "attestation": {
+    "label": "...",
+    "confirmed_at": "...",
+    "merkle_root": "...",
+    "protocol_version": "1.0"
+  },
+  "match": {
+    "leaf_id": "...",
+    "leaf_type": "file | shingle",
+    "proof_path": []
+  },
+  "no_match_statement": "...",
+  "signatures": [],
+  "created_at": "..."
+}
+```
+
+All version fields are mandatory. Canonicalization is RFC 8785 (JCS). Hashes are lowercase hex. No floats.
+
+## 17.2 Automatic Generation
+
+Every lookup automatically creates:
+
+* signed/self-verifiable JSON result package
+* durable result record
+* PDF receipt generated on demand
+
+Tier behavior:
+
+| Tier       | Match Package                                        | No-Match Package                                     |
+| ---------- | ---------------------------------------------------- | ---------------------------------------------------- |
+| Free       | Self-verifiable                                      | Self-verifiable                                      |
+| Team       | Proveria-signed                                      | Proveria-signed                                      |
+| Enterprise | Proveria-signed; optional customer signing/anchoring | Proveria-signed; optional customer signing/anchoring |
+
+---
+
+# 18. Receipts and PDFs
+
+## 18.1 Canonical Artifact
+
+Signed JSON is canonical.
+
+PDF is human-readable rendering.
+
+## 18.2 Generation Timing
+
+| Artifact                          |              Generated |      Stored | Canonical |
+| --------------------------------- | ---------------------: | ----------: | --------: |
+| Signed JSON attestation receipt   |        At confirmation |         Yes |       Yes |
+| Signed JSON lookup result package |              At lookup |         Yes |       Yes |
+| PDF receipt                       | On first download/view | Yes, cached |        No |
+
+## 18.3 PDF Rendering
+
+PDFs are generated server-side by the worker.
+
+Recommended renderer:
+
+> Playwright/Chromium HTML-to-PDF
+
+PDF includes:
+
+* package ID
+* canonical JSON hash
+* attestation/result summary
+* match/no-match result
+* Merkle root/proof summary where applicable
+* signature status
+* timestamp
+* QR code
+* verification URL
+* reference code
+
+## 18.4 Verification Links
+
+Every PDF includes:
+
+* QR code
+* human-readable verification URL
+* package/reference ID
+
+V1 supports:
+
+* expiration
+* revocation
+* rotation
+
+Tenant Admins only can manage link expiration/revocation/rotation.
+
+Expired links:
+
+> explicit expired page
+
+Revoked/nonexistent/rotated old links:
+
+> same generic unavailable/access-denied response
+
+Revoking a link does not invalidate the signed package.
+
+---
+
+# 19. Audit Logging
+
+## 19.1 Storage
+
+Audit uses separate audit tables/schema in the same PostgreSQL database.
+
+Example:
+
+```txt
+public.tenants
+public.users
+public.projects
+public.attestations
+public.verification_results
+
+audit.audit_events
+audit.audit_event_hash_chain
+audit.audit_exports
+audit.audit_checkpoints
+```
+
+## 19.2 Tiered Audit
+
+| Tier               | Audit Posture                                      |
+| ------------------ | -------------------------------------------------- |
+| Free               | Minimal public registry history                    |
+| Team Starter / Pro | Business/workflow audit                            |
+| Enterprise         | Complete compliance/security audit with hash-chain |
+
+## 19.3 Audit Category Table
+
+| Audit category                  |                Free |                       Team |          Enterprise |
+| ------------------------------- | ------------------: | -------------------------: | ------------------: |
+| Minimal registry history        |                 Yes |                        Yes |                 Yes |
+| Identity/session events         |                  No |                        Yes |                 Yes |
+| Device pairing events           |                  No |                        Yes |                 Yes |
+| Project events                  |                  No |                        Yes |                 Yes |
+| Attestation lifecycle events    | Minimal public only |                        Yes |                 Yes |
+| Validation events               |                  No |               Basic result |         Full detail |
+| Verification lookup events      |                  No |                        Yes |                 Yes |
+| Proof/result package events     |                  No |                        Yes |                 Yes |
+| Access control events           |                  No |                        Yes |                 Yes |
+| Basic admin events              |                  No |                        Yes |                 Yes |
+| Template/policy events          |                  No |    Basic template selected |         Full detail |
+| Cryptographic events            |                  No |     Basic signature status |         Full detail |
+| Customer-managed signing events |                  No |                         No |                 Yes |
+| Blockchain anchoring events     |                  No |                         No |                 Yes |
+| Audit integrity events          |                  No |                         No |                 Yes |
+| Evidence export events          |                  No |     Basic receipt download | Full export history |
+| Security-sensitive admin events |                  No |        Basic admin changes |         Full detail |
+| System/worker events            |                  No | User-visible failures only |         Full detail |
+| Rate-limit/abuse events         |                  No |        Basic blocked event |         Full detail |
+| Retention/deletion events       |                  No |       Basic archive events |          Full trace |
+| Support/admin tooling events    |                  No |                 No/minimal |                 Yes |
+| API/SDK/webhook events          |                  No |                         No |            Deferred |
+
+## 19.4 Enterprise Hash Chain
+
+Hash-chained audit logs are Enterprise-only.
+
+Team gets ordinary append-only audit rows.
+
+Enterprise gets:
+
+* append-only rows
+* hash-chain integrity
+* checkpoints
+* audit Merkle root generation
+* optional Arbitrum anchoring if enabled
+
+---
+
+# 20. Async Processing
+
+Use:
+
+> **BullMQ + Redis**
+
+## 20.1 Queues
+
+| Queue                      | Purpose                                                                |
+| -------------------------- | ---------------------------------------------------------------------- |
+| `attestation-validation`   | Validate submitted manifests, recompute Merkle root, verify signatures |
+| `receipt-generation`       | Generate signed JSON receipts                                          |
+| `proof-package-generation` | Generate match/no-match result packages                                |
+| `pdf-rendering`            | Render PDFs from canonical JSON                                        |
+| `audit-events`             | Append/hash-chain audit events                                         |
+| `object-finalization`      | Finalize immutable object-store records                                |
+
+## 20.2 Worker Responsibilities
+
+Worker performs:
+
+* validation jobs
+* package generation
+* receipt generation
+* PDF generation
+* audit hash-chain jobs for Enterprise
+* object-store finalization
+* retry/backoff handling
+* failed job capture
+
+---
+
+# 21. Hash CLI / Public Utility
+
+V1 includes lightweight CLI:
+
+```txt
+/apps/hash-cli
+```
+
+Responsibilities:
+
+* generate compatible local hashes
+* whole-file hashing for Free
+* shingle hashing for Team/Enterprise-compatible workflows
+* output plain text and JSON
+* include algorithm/version metadata
+* no network calls by default
+
+It does not support:
+
+* project creation
+* attestation creation
+* device pairing
+* signing
+* uploading
+* OCR
+* receipt generation
+
+---
+
+# 22. Entitlements and Limits
+
+## 22.1 Enforcement
+
+Plan enforcement applies to:
+
+* user count
+* project count for Free
+* attestation count for Free
+* monthly attestation allowance for Team
+* retained storage/metadata
+* shingling availability
+* private project availability
+* receipt signing availability
+* audit feature availability
+* customer signing availability
+* anchoring availability
+
+## 22.2 Plan Rules
+
+| Rule                     |                               Free | Team Starter |  Team Pro |      Enterprise |
+| ------------------------ | ---------------------------------: | -----------: | --------: | --------------: |
+| Users                    |          1 personal tenant default |            3 |        10 |          Custom |
+| Public projects          |                                  5 |          Yes |       Yes |             Yes |
+| Private projects         |                                 No |          Yes |       Yes |             Yes |
+| Attestations             |                          1/project |     50/month | 500/month |          Custom |
+| Verification             |                      Scoped public |    Unlimited | Unlimited | Custom/fair use |
+| Storage                  |                Small fixed/default |        25 GB |    250 GB |          Custom |
+| Whole-file hashing       |                                Yes |          Yes |       Yes |             Yes |
+| Shingling                |                                 No |          Yes |       Yes |             Yes |
+| OCR                      | No practical use without shingling |          Yes |       Yes |             Yes |
+| Proveria-signed receipts |                                 No |          Yes |       Yes |             Yes |
+| Customer-managed signing |                                 No |           No |        No |        Optional |
+| Arbitrum anchoring       |                                 No |           No |        No |        Optional |
+
+## 22.3 Retention and Deletion
+
+V1 defines a basic retention policy. A full Retention/Deletion V1 spec is required before pilot.
+
+| Artifact class                          | V1 default                                                                |
+| --------------------------------------- | ------------------------------------------------------------------------- |
+| Confirmed canonical artifacts           | Retained per plan policy; not casually deletable via UI                   |
+| Failed pre-confirmation attempts        | **90 days**, then eligible for cleanup unless locked                      |
+| Canceled pre-confirmation attempts      | **90 days**, then eligible for cleanup unless locked                      |
+| Local drafts                            | Unrecoverable if local encryption key is lost                             |
+| User personal data                      | Supports account deactivation, soft deletion, anonymization where lawful  |
+| Audit rows                              | Retain stable internal ID references; minimize personal data in payloads  |
+
+Locks that prevent cleanup include admin lock, export pending, and legal hold.
+
+Confirmed evidence artifacts and audit records are not subject to UI-driven hard deletion. GDPR / right-to-erasure flows operate against user personal data and may anonymize actor references in audit records, but do not remove cryptographic evidence.
+
+---
+
+# 23. Security Principles
+
+V1 must enforce:
+
+* no plaintext ingestion
+* local hashing/shingling/OCR only
+* signed desktop manifests
+* tenant-scoped device pairing
+* OS secure storage for desktop credentials
+* immutable object-store artifacts
+* server-side Merkle recomputation
+* scoped lookup only
+* no global hash search
+* login required for private metadata
+* explicit attestation-specific consumer authorization
+* audit events for access, lookup, receipt generation, device activity
+* confirmed attestations immutable
+* failed attempts retained
+* revoked/nonexistent links indistinguishable
+
+---
+
+# 24. Testing Strategy
+
+## 24.1 Unit Tests
+
+Required for:
+
+* SHA-256 hashing
+* canonicalization (RFC 8785 / JCS)
+* shingle generation
+* Merkle tree generation (leaf/node domain separation, length-prefixing, odd-leaf handling)
+* Merkle proof verification
+* manifest schema validation
+* proof/result package schema validation
+* signature verification
+* entitlement logic
+* link expiration/revocation/rotation behavior
+
+## 24.1.1 Reference Test Vectors
+
+Every protocol-level spec must publish reference test vectors. The Hash CLI, desktop app, server validator, and future SDKs must all pass the same vectors.
+
+| Spec             | Required test vectors                                                        |
+| ---------------- | ---------------------------------------------------------------------------- |
+| Protocol V1      | canonical JSON bytes, leaf hash, Merkle root, proof path, signature payload  |
+| Shingling V1     | input text, normalized text, shingles, shingle hashes                        |
+| OCR V1           | sample extraction metadata payload (OCR output itself need not be vectored)  |
+| Desktop Trust V1 | device signature payload, expected verification result                       |
+| Audit Hash Chain | prior hash + event payload → next audit hash                                 |
+
+## 24.2 Integration Tests
+
+Required for:
+
+* auth/session flows
+* tenant/device pairing
+* project creation
+* attestation submission
+* worker validation
+* object-store writes
+* lookup result generation
+* PDF generation
+* audit event writes
+* plan enforcement
+
+## 24.3 End-to-End Tests
+
+Initial E2E paths:
+
+1. Free whole-file attestation + public scoped lookup.
+2. Team whole-file attestation + private authorized lookup + signed result package.
+3. Team shingled PDF attestation + passage hash lookup.
+4. Validation failure + repair/resubmit.
+5. Tenant Admin revokes verification link.
+6. Tenant Admin archives project.
+
+---
+
+# 25. Observability and Operations
+
+V1 includes:
+
+* structured logs
+* health endpoints
+* worker job status visibility
+* failed job visibility
+* basic retry/backoff
+* container health checks
+* API request logging
+* object-store error logging
+* audit event logging
+
+Deferred:
+
+* full enterprise observability dashboards
+* advanced support tooling
+* customer-visible diagnostics
+* SIEM integrations
+* multi-region operations
+* external status page
+
+## 25.1 Backup and Disaster Recovery
+
+V1 pilot must ship with an explicit backup/DR posture. The detailed runbook is part of Milestone 15.
+
+| Area             | V1 pilot target                                                          |
+| ---------------- | ------------------------------------------------------------------------ |
+| Postgres backups | Automated daily backup; point-in-time recovery (PITR) on RDS             |
+| Object storage   | S3 versioning enabled for canonical artifact buckets                     |
+| Object retention | Lifecycle policies for failed/canceled pre-confirmation attempts (§22.3) |
+| Redis            | Non-canonical; jobs retried/reconstructed where possible                 |
+| RPO              | 24 hours minimum for pilot; better when RDS PITR is enabled              |
+| RTO              | 24–48 hours for pilot                                                    |
+| Region           | Single-region (`us-east-1`)                                              |
+| Multi-region DR  | Deferred (see §28)                                                       |
+
+A documented restore procedure must exist before pilot. Confirmed canonical artifacts (manifests, signed receipts, proof packages, audit hash-chain) are the highest-priority recovery objects.
+
+## 25.2 Internal Support / Admin View
+
+V1 ships a minimal **read-only** internal support/admin surface so pilot operators can investigate issues without inspecting production databases directly. Full support tooling is deferred.
+
+Scope (read-only):
+
+* tenant list and plan
+* users, devices, projects
+* attestations, submission attempts, validation status
+* object references
+* recent worker jobs
+* recent audit events
+* lookup/result-package status
+* verification link status
+
+Rules:
+
+* read-only at launch — no mutation paths
+* internal/super-admin role only
+* every access to a tenant support view is itself audit-logged
+* **no impersonation**
+* **no plaintext access** — Proveria does not hold plaintext (see §23)
+
+This view ships as part of Milestone 15 (see §26.1).
+
+---
+
+# 26. V1 Milestone Plan
+
+## 26.1 Milestone Table
+
+| Milestone | Name                                                   | Primary Outcome                                                                 | Scope                                                                                                                                                         |
+| --------: | ------------------------------------------------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|         1 | Developer foundation                                   | Repo and local runtime work end-to-end                                          | pnpm monorepo, Turborepo, Docker Compose, app/package skeletons, Postgres, Redis, MinIO, BullMQ worker skeleton, health checks, baseline tests                |
+|         2 | Identity, tenancy, roles, and device pairing           | Users and desktop devices authenticate into tenant model                        | In-house auth, logged verification/reset codes, Tenant Admin/Producer/Consumer roles, plan model, tenant-scoped device pairing, device keys, basic audit rows |
+|         3 | Project/attestation backbone + thin desktop submission | Paired desktop app can create/select project and submit placeholder attestation | Project model, fixed templates, unique labels, lifecycle states, attempts, immutable object keys, portal status view, placeholder validation                  |
+|         4 | Whole-file attestation flow **(gated on Protocol V1 sign-off + external crypto review)** | First real cryptographic attestation works                                      | Desktop file/folder selection, SHA-256 hashing, deterministic leaves, Merkle root, signed manifest, upload, server recomputation, confirmation                |
+|         5 | Manifest, receipt, and object artifact hardening       | Attestations produce retained evidence artifacts                                | Canonical manifest schema, signed JSON attestation receipt, immutable object layout, failed-attempt retention, object references, package IDs                 |
+|         6 | Portal producer/admin workflow                         | Admins/producers can manage workspace                                           | Project list/detail, attestation status, archive/restore, user/device management, plan-limit visibility, audit views                                          |
+|         7 | Consumer scoped lookup — whole-file                    | Consumers verify hashes against authorized attestations                         | Attestation-specific access grants, consumer login, scoped lookup page, pre-lookup metadata, whole-file lookup, match/no-match package                        |
+|         8 | Proof/result packages + PDFs                           | Lookups produce durable evidence packages                                       | Signed JSON match/no-match packages, worker-rendered PDF, cached PDFs, QR code, verification URL, expiration/revocation/rotation                              |
+|         9 | Team/Enterprise audit tiering                          | Audit behavior matches packaging model                                          | Team workflow audit, Enterprise complete audit, separate audit tables, Enterprise hash-chain/checkpoints                                                      |
+|        10 | Text/PDF shingling                                     | Passage-level verification works for Team/Enterprise                            | Text extraction, canonicalization, shingle presets, shingle leaves, shingle-aware manifests/proofs/lookups                                                    |
+|        11 | Local OCR for scanned PDFs                             | Scanned PDFs participate in shingle attestations                                | Bundled OCR, fallback extraction, OCR metadata, confidence/warnings, local preview, partial-success handling                                                  |
+|        12 | Desktop wizard polish + local drafts                   | Desktop becomes usable producer workflow                                        | Guided wizard, project creation, template selection, overrides, encrypted drafts, incremental cache, freshness checks, repair/resubmit                        |
+|        13 | Entitlement enforcement                                | Packaging rules enforced                                                        | Free/Team/Enterprise limits, shingling restrictions, storage/attestation limits, fair-use verification, enterprise feature flags                              |
+|        14 | Hash CLI / public utility                              | Consumers/testers can generate compatible hashes locally                        | Whole-file hashing, shingle hashing for allowed workflows, JSON/plain output, algorithm metadata, no network calls                                            |
+|        15 | Production-readiness pass                              | V1 can be piloted with real users                                               | Structured logs, retries/backoff, failed-job visibility, security pass, E2E happy paths, seed/demo data, desktop forced-version check with offline TTL, signed policy responses, S3/MinIO parity checklist, blocked-version draft access, **AWS `us-east-1` deployment readiness (ECS/Fargate + RDS + S3 + ElastiCache)**, **backup/restore procedure (RDS PITR, S3 versioning, documented RPO 24h / RTO 24–48h — §25.1)**, **minimal read-only internal support/admin view (§25.2)**, **real transactional email provider configured for pilot (Resend/SES) — codes must not be logged in production** |
+|        16 | Packaging and pilot release                            | Installable desktop + deployable platform                                       | Mac/Windows desktop packaging, signed/notarized Mac app if needed, Windows installer, deployment docs, operator docs, pilot checklist                         |
+
+## 26.1.1 Desktop Version Enforcement
+
+Desktop app must check version compatibility against the API on launch, cache the policy locally, and honor a TTL when offline.
+
+Default TTL for V1 pilot: **7 days** (tenant-configurable later for Enterprise).
+
+Cached policy includes minimum supported version, recommended version, blocked versions, protocol compatibility range, fetched timestamp, expiration, upgrade URL, and release notes URL. Policy responses must be signed by Proveria and include a freshness timestamp and max-age to prevent replay of stale "allowed" responses.
+
+| Scenario                              | Behavior                                                 |
+| ------------------------------------- | -------------------------------------------------------- |
+| Online and current version allowed    | Normal operation                                         |
+| Online and version below minimum      | Block submission                                         |
+| Online and version explicitly blocked | Block submission                                         |
+| Offline and cached policy still valid | Allow submission if cached policy allows current version |
+| Offline and cached policy expired     | Allow draft viewing/export, block submission             |
+| Blocked version                       | Drafts remain readable/exportable; submission blocked    |
+
+> **Version enforcement must never destroy or strand local drafts.** Even if submission is blocked, the user must be able to open the app, view local drafts, export local draft metadata where safe, and upgrade.
+
+## 26.2 Sequencing Principle
+
+Build the trust spine first:
+
+```txt
+pair desktop
+  → create project
+  → create attestation
+  → hash locally
+  → submit signed manifest
+  → server validates
+  → confirm
+  → lookup hash
+  → generate proof package
+  → render receipt
+```
+
+Do not build OCR before the whole-file attestation and lookup loop works.
+
+Shingling and OCR are differentiators, but the core cryptographic attestation loop must be stable first.
+
+## 26.3 Required Specs Before Implementation
+
+The following specs must be drafted, reviewed, and approved before their dependent implementation milestones begin. Milestones 1–3 proceed in parallel with spec authoring. Milestone 4 is gated on Protocol V1 sign-off and external cryptographic review.
+
+| Spec                         | Lead        | Support                            | Gates milestone(s) |
+| ---------------------------- | ----------- | ---------------------------------- | ------------------ |
+| Protocol V1                  | Engineering | Product / external crypto reviewer | 4, 5, 7, 8         |
+| Shingling V1                 | Engineering | Product                            | 10                 |
+| OCR V1                       | Joint       | Engineering + Product              | 11                 |
+| Desktop Trust V1             | Engineering | Product                            | 2, 15              |
+| Notification / Invitation V1 | Product     | Engineering                        | 2, 7, 15           |
+| Retention / Deletion V1      | Product     | Engineering, legal input later     | 15                 |
+
+Protocol V1 covers manifest canonicalization (RFC 8785), Merkle leaf encoding, Merkle tree construction with domain separation, whole-file hashing, shingling normalization references, OCR extraction metadata, algorithm/version identifiers, hash encoding (lowercase hex), no-floats rule, and forward-compatibility / deprecation rules.
+
+Each spec requires:
+
+1. draft
+2. Engineering review
+3. Product/Architecture review
+4. test vectors where applicable
+5. external cryptographic review for Protocol V1 (and any crypto-touching spec)
+6. signed-off versioned spec committed to repo
+
+External cryptographic review of Protocol V1 is required before Milestone 4 implementation begins. Review scope covers canonicalization, Merkle construction, leaf/node encoding, signature payloads, proof/result package structure, audit hash-chain construction, and versioning/deprecation rules.
+
+### Reviewer selection and spend approval
+
+* Engineering **shortlists 2–3 candidate reviewers** with relevant cryptography credentials and writes a short brief on each.
+* Product / Architecture **selects** the preferred reviewer from the shortlist.
+* The **founder / business owner approves the spend** before engagement.
+* **Initial budget target: $10,000–$20,000 USD.** Scope kept narrow to fit budget.
+
+The Hash CLI (`apps/hash-cli`) is in scope of canonicalization test vectors from the start. CLI must not drift from desktop/server behavior.
+
+---
+
+# 27. Recommended V1 Definition of Done
+
+V1 is done when:
+
+1. A developer can run the backend services, web apps, database, queue, and object store locally with Docker Compose, and run the desktop app natively against that local environment.
+2. A user can register/login through Proveria-owned auth.
+3. A user can pair a desktop app to a tenant.
+4. A Tenant Admin or Producer can create a project from the desktop app.
+5. A desktop user can select local files/folders and generate a signed manifest.
+6. The server can validate the manifest and recompute the Merkle root.
+7. A confirmed attestation becomes immutable.
+8. A consumer can be authorized to a specific private attestation.
+9. A consumer can submit a hash for scoped lookup.
+10. Match and no-match results generate canonical JSON packages automatically.
+11. Team/Enterprise result packages are Proveria-signed.
+12. PDFs render server-side from canonical JSON and include QR/verification URL.
+13. Free/Team/Enterprise entitlements are enforced.
+14. Audit visibility follows the tiering model.
+15. The desktop app can be packaged for pilot use.
+16. The corporate site and portal use the same Proveria design system.
+
+---
+
+# 28. Post-V1 Roadmap Candidates
+
+## V1.1
+
+* billing / payments / Stripe integration (paid self-serve upgrades, automated plan changes, invoices)
+* verification request/ticket workflow
+* producer approval of consumer-requested receipts
+* transactional email
+* storage connectors
+* API keys
+* basic external API
+* tenant template management
+* desktop auto-update
+* richer admin / support tooling (mutation paths beyond V1's read-only view)
+* platform admin role — a cross-tenant internal/staff role for support, manual tenant/plan provisioning, and operational visibility across tenants. V1's `role` enum (`tenant_admin`, `producer`, `consumer`) is tenant-scoped only; there is no platform-wide role today. Distinct from any tenant membership.
+
+## V2
+
+* SDKs
+* webhooks
+* SSO/SAML/OIDC
+* customer-managed KMS integrations
+* Arbitrum anchoring productionization
+* advanced retention policies
+* perceptual image hashing
+* perceptual video hashing
+* audio fingerprinting
+* semantic similarity workflows
+* enterprise evidence export workflows
+* multi-region deployment
+* advanced observability/SIEM integration
+
+---
+
+# 29. Final Architecture Statement
+
+Proveria V1 should be built as a **desktop-first, local-processing, cryptographic provenance system**.
+
+The architecture should prioritize:
+
+* no plaintext ingestion
+* deterministic cryptographic metadata
+* local desktop trust boundary
+* signed manifests
+* immutable attempts/artifacts
+* server-side validation
+* scoped verification
+* signed match/no-match result packages
+* human-readable PDF receipts
+* simple but real tenancy
+* tiered auditability
+* clean upgrade path to Enterprise signing and anchoring
+
+The highest-risk parts are not the UI. They are:
+
+1. canonicalization/shingling correctness,
+2. Merkle/proof determinism,
+3. desktop signing/device trust,
+4. scoped verification semantics,
+5. receipt/result package integrity,
+6. immutable artifact handling,
+7. audit tiering.
+
+The milestone plan should protect those risks by building the trust spine before layering on OCR, polish, and enterprise extensions.
+
+---
+
+# 30. Product / Architecture Decision Log — 2026-05-13
+
+This log consolidates the Product / Architecture answers to Engineering's remaining V1 planning questions. The decisions are woven into the relevant sections above; this table is the single-source-of-truth summary.
+
+|  # | Question                                | Decision                                                                                                                                                |
+| -: | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|  1 | Repo and code ownership                 | Bootstrap a new `/proveria` pnpm/Turborepo monorepo at the repo root. Protocol specs + test vectors live in-repo under `/docs/protocol`. See §4.1.      |
+|  2 | GitHub owner                            | **TBD** — to be provided by the business owner before Milestone 1. Repo name is `proveria`.                                                             |
+|  3 | Pilot deployment target                 | AWS single-region, default `us-east-1`. ECS/Fargate + RDS + S3 + ElastiCache. Local dev stays Docker Compose with MinIO. See §6.3.                      |
+|  4 | Device signing algorithm                | **Ed25519** for V1 desktop/device manifest signing. Proveria platform signing also Ed25519 unless infra requires otherwise. See §15.1.1.                |
+|  5 | Protocol V1 spec home                   | In-repo under `/docs/protocol/v1/` with test vectors so implementation/docs/tests version-lock together. See §26.3.                                     |
+|  6 | External crypto reviewer & spend        | Engineering shortlists 2–3 candidates; Product/Architecture selects; founder/business owner approves spend. Initial budget target $10k–$20k. See §26.3. |
+|  7 | OCR test corpus                         | Engineering assembles initial public, non-sensitive corpus. Product supplements later. **No customer/private docs** unless explicitly sanitized. §12.4. |
+|  8 | Billing / payments                      | Deferred to V1.1. V1 pilot tenants are free or sales-mediated/manual. No Stripe in V1. See §2.2 and §28.                                                |
+|  9 | Tenant signup flow                      | Free is self-serve; Team Starter / Team Pro / Enterprise are sales-mediated and manually provisioned in V1. See §8.4.                                   |
+| 10 | Backup / disaster recovery              | Milestone 15 includes RDS PITR, S3 versioning, lifecycle policies, documented restore procedure. RPO 24h pilot min / RTO 24–48h. See §25.1.             |
+| 11 | Pilot support tooling                   | Full support tooling deferred. V1 ships a **read-only** internal admin/support view by Milestone 15. See §25.2.                                         |
+
+## 30.1 Updated Milestone Impact
+
+* **Milestone 1** can begin under these assumptions.
+* **Milestone 2** must include Ed25519 device-key generation, profile-aware keychain namespacing, tenant-scoped device pairing, and the local-dev notification provider.
+* **Milestone 4** remains gated on Protocol V1 sign-off and external cryptographic review.
+* **Milestone 15** now explicitly includes:
+  * forced desktop version policy with signed responses and offline TTL
+  * AWS `us-east-1` deployment readiness
+  * documented backup/restore procedure with pilot RPO/RTO
+  * S3/MinIO parity testing
+  * minimal read-only internal support view
+  * real transactional email provider configured for pilot

@@ -1,0 +1,12 @@
+-- Proveria — initial database bootstrap.
+--
+-- All Proveria schema (public.* and audit.*) is owned by Drizzle migrations
+-- under packages/db. This file intentionally creates nothing — it is kept as
+-- a hook point in case we need Postgres extensions (pgcrypto, pg_stat_statements,
+-- etc.) before migrations run.
+--
+-- To bootstrap a fresh dev database:
+--   docker compose up -d postgres
+--   pnpm --filter @proveria/db db:migrate
+--
+-- See docs/v1 §7 and §19.1 for schema scope.

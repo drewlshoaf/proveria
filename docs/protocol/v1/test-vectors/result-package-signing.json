@@ -1,0 +1,53 @@
+{
+  "spec": "proveria-protocol-v1",
+  "vectorCategory": "result-package-signing",
+  "version": "1.0",
+  "specSection": "§9.4",
+  "description": "Pins the bytes Proveria signs for scoped verifier result packages. For each test, take the input result package, set its `signatures` field to [], RFC 8785-canonicalize the resulting value, SHA-256 the canonical bytes, and sign that digest with the fixed Protocol V1 test keypair.",
+  "vectors": [
+    {
+      "name": "no-match-result-platform-signature",
+      "note": "No-match result package. The no-match statement is part of the canonical signed bytes and therefore cannot be changed without invalidating the Proveria signature.",
+      "input": {
+        "keyId": "proveria-platform-key-v1",
+        "resultPackage": {
+          "schema_version": "1.0",
+          "protocol_version": "1.0",
+          "canonicalization_version": "1.0",
+          "merkle_version": "1.0",
+          "verifier_version": "1.0",
+          "package_id": "pkg_sign_test",
+          "result_type": "no_match",
+          "submitted_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "hash_algorithm": "sha256",
+          "hash_algorithm_version": "1.0",
+          "lookup_scope": {
+            "tenant_id": "11111111-1111-1111-1111-111111111111",
+            "project_id": "22222222-2222-2222-2222-222222222222",
+            "attestation_id": "33333333-3333-3333-3333-333333333333"
+          },
+          "attestation": {
+            "label": "sign-test",
+            "confirmed_at": "2026-05-14T12:00:00.000Z",
+            "merkle_root": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "protocol_version": "1.0"
+          },
+          "match": null,
+          "no_match_statement": "This hash was not present in this specific attestation's committed hash set.",
+          "signatures": [],
+          "created_at": "2026-05-15T08:00:00.000Z"
+        }
+      },
+      "expected": {
+        "canonicalResultPackageUtf8Hex": "7b226174746573746174696f6e223a7b22636f6e6669726d65645f6174223a22323032362d30352d31345431323a30303a30302e3030305a222c226c6162656c223a227369676e2d74657374222c226d65726b6c655f726f6f74223a2262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262222c2270726f746f636f6c5f76657273696f6e223a22312e30227d2c2263616e6f6e6963616c697a6174696f6e5f76657273696f6e223a22312e30222c22637265617465645f6174223a22323032362d30352d31355430383a30303a30302e3030305a222c22686173685f616c676f726974686d223a22736861323536222c22686173685f616c676f726974686d5f76657273696f6e223a22312e30222c226c6f6f6b75705f73636f7065223a7b226174746573746174696f6e5f6964223a2233333333333333332d333333332d333333332d333333332d333333333333333333333333222c2270726f6a6563745f6964223a2232323232323232322d323232322d323232322d323232322d323232323232323232323232222c2274656e616e745f6964223a2231313131313131312d313131312d313131312d313131312d313131313131313131313131227d2c226d61746368223a6e756c6c2c226d65726b6c655f76657273696f6e223a22312e30222c226e6f5f6d617463685f73746174656d656e74223a2254686973206861736820776173206e6f742070726573656e7420696e2074686973207370656369666963206174746573746174696f6e277320636f6d6d69747465642068617368207365742e222c227061636b6167655f6964223a22706b675f7369676e5f74657374222c2270726f746f636f6c5f76657273696f6e223a22312e30222c22726573756c745f74797065223a226e6f5f6d61746368222c22736368656d615f76657273696f6e223a22312e30222c227369676e617475726573223a5b5d2c227375626d69747465645f68617368223a2261616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2276657269666965725f76657273696f6e223a22312e30227d",
+        "signingDigestHex": "ce1cc9051aecfb3a9a7d0139b97326f81ced90ef59bb89b812edabd5f09b91cb",
+        "signatureBase64Url": "1zlkLLMHBc-w1neKSbf7iLOs970jtCTQ7P1u7Jk9StLPuWeAdySEaSMR7wR6puqqk7utJT8Sa-JzkDbet7DFCw",
+        "verifies": true
+      }
+    }
+  ],
+  "fixedTestKeypair": {
+    "publicKey": "dc0vVx95x8IglqC7FCpzYNkrB_LzdugMT1u48xmzB9w",
+    "privateKey": "MC4CAQAwBQYDK2VwBCIEIBW8SzGCm7VvwnEZovGqbOhKwps0UGDnRg0VXmELQn42"
+  }
+}

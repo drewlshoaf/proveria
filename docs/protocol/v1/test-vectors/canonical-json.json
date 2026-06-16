@@ -1,0 +1,83 @@
+{
+  "spec": "proveria-protocol-v1",
+  "vectorCategory": "canonical-json",
+  "version": "1.0",
+  "specSection": "§2",
+  "description": "Maps an arbitrary JSON value to its RFC 8785 canonical UTF-8 byte serialization. inputJson is the input value; expected.canonicalUtf8Hex is the canonical byte string as hex; expected.canonicalUtf8 is the same bytes rendered as a UTF-8 string (informational; the bytes are authoritative).",
+  "vectors": [
+    {
+      "name": "key-ordering",
+      "note": "RFC 8785 requires object keys serialize in UTF-16 code-unit order. Both 'a' and 'b' here; canonical output has them sorted.",
+      "input": {
+        "b": 2,
+        "a": 1
+      },
+      "expected": {
+        "canonicalUtf8": "{\"a\":1,\"b\":2}",
+        "canonicalUtf8Hex": "7b2261223a312c2262223a327d"
+      }
+    },
+    {
+      "name": "no-insignificant-whitespace",
+      "note": "Spaces, tabs, and newlines between tokens are dropped.",
+      "input": {
+        "a": [
+          1,
+          2,
+          3
+        ]
+      },
+      "expected": {
+        "canonicalUtf8": "{\"a\":[1,2,3]}",
+        "canonicalUtf8Hex": "7b2261223a5b312c322c335d7d"
+      }
+    },
+    {
+      "name": "nested-objects-recurse-key-ordering",
+      "input": {
+        "z": {
+          "b": 2,
+          "a": 1
+        },
+        "a": null
+      },
+      "expected": {
+        "canonicalUtf8": "{\"a\":null,\"z\":{\"a\":1,\"b\":2}}",
+        "canonicalUtf8Hex": "7b2261223a6e756c6c2c227a223a7b2261223a312c2262223a327d7d"
+      }
+    },
+    {
+      "name": "string-escapes-minimal",
+      "note": "RFC 8785 escapes only what JSON requires (quote, backslash, control chars). Unicode characters above U+001F serialize as themselves.",
+      "input": {
+        "s": "héllo\n\"world\""
+      },
+      "expected": {
+        "canonicalUtf8": "{\"s\":\"héllo\\n\\\"world\\\"\"}",
+        "canonicalUtf8Hex": "7b2273223a2268c3a96c6c6f5c6e5c22776f726c645c22227d"
+      }
+    },
+    {
+      "name": "integers-no-float-coercion",
+      "input": {
+        "n": 12345
+      },
+      "expected": {
+        "canonicalUtf8": "{\"n\":12345}",
+        "canonicalUtf8Hex": "7b226e223a31323334357d"
+      }
+    },
+    {
+      "name": "key-ordering-utf16-code-units-non-bmp",
+      "note": "RFC 8785 §3.2.3 sorts keys by UTF-16 code units. The non-BMP key U+1F600 (surrogate pair 0xD83D 0xDE00) sorts BEFORE the BMP key U+E000 because 0xD83D < 0xE000 as code units; code-point order (0x1F600 > 0xE000) would sort it last. Pins the code-unit form.",
+      "input": {
+        "": 1,
+        "😀": 2
+      },
+      "expected": {
+        "canonicalUtf8": "{\"😀\":2,\"\":1}",
+        "canonicalUtf8Hex": "7b22f09f9880223a322c22ee8080223a317d"
+      }
+    }
+  ]
+}

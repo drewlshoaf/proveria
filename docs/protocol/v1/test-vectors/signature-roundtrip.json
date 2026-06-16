@@ -1,0 +1,46 @@
+{
+  "spec": "proveria-protocol-v1",
+  "vectorCategory": "signature-roundtrip",
+  "version": "1.0",
+  "specSection": "§8",
+  "description": "Pins Ed25519 sign + verify behavior. The fixed test keypair is committed below so any implementation can reproduce signatures byte-for-byte. (Ed25519 signatures are deterministic per RFC 8032 — same key + same message always produces the same signature.) Keys are PKCS#8 / raw, base64url-encoded.",
+  "fixedTestKeypair": {
+    "publicKey": "dc0vVx95x8IglqC7FCpzYNkrB_LzdugMT1u48xmzB9w",
+    "privateKey": "MC4CAQAwBQYDK2VwBCIEIBW8SzGCm7VvwnEZovGqbOhKwps0UGDnRg0VXmELQn42"
+  },
+  "vectors": [
+    {
+      "name": "sign-32-zero-bytes",
+      "note": "Pre-hashed payload of 32 zero bytes (the shape of the signing-digest input from §8.1).",
+      "input": {
+        "messageHex": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expected": {
+        "signatureBase64Url": "6z3iqMEMFIiZLuCVKbcGdj4RBOAxl1_7cH-FGWsWNzHBwosARGKjOn7CCOu35WCp3K3du58WDkIle-2yW4TFAg",
+        "verifies": true
+      }
+    },
+    {
+      "name": "sign-leaf-hash-A",
+      "note": "Sign the leaf hash from leaf-hash.json#file-sha256-v1-single-byte-A.",
+      "input": {
+        "messageHex": "c0a9acf68a3b0a044bdc477d1e66048d458f4a42482418831dbdcdb2106a90fd"
+      },
+      "expected": {
+        "signatureBase64Url": "XrjB8v_EOqbm5X5QKsvIXb69V-AVupmqwmLU-GAifNs7WaGtDwIqSGYPWm9kzs5bQ6hq4aKDasqdFKnLrf1XCA",
+        "verifies": true
+      }
+    },
+    {
+      "name": "verify-tampered-message-fails",
+      "note": "Same signature as sign-leaf-hash-A but a flipped bit in the message. Verification must return false (per docs/v1 §14 — fail closed).",
+      "input": {
+        "messageHex": "c0a9acf68a3b0a044bdc477d1e66048d458f4a42482418831dbdcdb2106a90fe",
+        "signatureFromVector": "sign-leaf-hash-A"
+      },
+      "expected": {
+        "verifies": false
+      }
+    }
+  ]
+}

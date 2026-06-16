@@ -1,0 +1,43 @@
+{
+  "name": "proveria",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Proveria — API-first cryptographic provenance platform",
+  "packageManager": "pnpm@11.1.1",
+  "engines": {
+    "node": ">=22 <25",
+    "pnpm": ">=11"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "dev:infra": "docker compose up -d postgres redis minio minio-init",
+    "eval:seed": "pnpm --filter @proveria/api seed:eval-producer",
+    "eval:smoke": "pnpm --filter @proveria/verifier smoke:live",
+    "eval:check": "pnpm --filter @proveria/api test && pnpm --filter @proveria/verifier typecheck && pnpm --filter @proveria/verifier smoke:live",
+    "qa:v5:tail": "bash scripts/v5-tail-qa-smoke.sh",
+    "cli": "cargo run -p proveria --",
+    "cli:install": "cargo install --path apps/proveria-cli --force",
+    "cli:test": "cargo test -p proveria",
+    "cli:typecheck": "cargo check -p proveria",
+    "test:public-api": "DATABASE_URL=postgres://proveria:proveria_dev@localhost:5432/proveria_test pnpm --filter @proveria/db db:migrate && DATABASE_URL=postgres://proveria:proveria_dev@localhost:5432/proveria_test pnpm --filter @proveria/api exec vitest run src/public-v1/contract.test.ts",
+    "smoke:happy-path": "bash scripts/local-happy-path.sh",
+    "smoke:pdf-text-layer": "bash scripts/local-pdf-text-layer.sh",
+    "smoke:exact-image": "bash scripts/local-exact-image.sh",
+    "smoke:ocr-pdf": "bash scripts/local-ocr-pdf.sh",
+    "v1:release-check": "bash scripts/v1-release-check.sh",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

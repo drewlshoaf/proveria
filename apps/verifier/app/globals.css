@@ -1,0 +1,41 @@
+@import 'tailwindcss';
+
+/* Pull in the shared brand components' source so Tailwind sees their class
+   strings. Without this, classes that only appear in @proveria/ui get tree-
+   shaken out of the verifier's CSS bundle. */
+@source "../../../packages/ui/src/**/*.tsx";
+
+/* Brand tokens. See docs/brand/style-guide.md.
+   One accent color, no exceptions. Sentence-case scale with semantic names.
+   No shadows, no gradients, no rounded card corners. */
+@theme {
+  --color-accent: #0d7c7c;
+  --color-bg: #ffffff;
+  --color-bg-panel: #fafaf9;
+  --color-ink: #0a0a0a;
+  --color-ink-strong: #171717;
+  --color-ink-secondary: #525252;
+  --color-ink-muted: #737373;
+  --color-ink-soft: #404040;
+  --color-form-label: #262626;
+  --color-border: #e5e5e5;
+  --color-border-input: #d4d4d4;
+  --color-border-focus: #404040;
+
+  --font-sans: system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo,
+    monospace;
+}
+
+/* Base reset: keep it minimal. */
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+body {
+  font-size: 16px;
+  line-height: 1.75;
+}

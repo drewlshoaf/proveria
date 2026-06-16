@@ -1,0 +1,25 @@
+{
+  "spec": "proveria-protocol-v1",
+  "vectorCategory": "leaf-hash",
+  "version": "1.0",
+  "specSection": "§4",
+  "description": "Maps a canonical payload to its leaf_hash via the binary leaf_hash_input construction in §4.1. payloadHex is the canonical payload in hex; payloadHashHex is SHA-256(payload); leafHashInputHex is the constructed binary input; leafHashHex is SHA-256(leafHashInputHex).",
+  "vectors": [
+    {
+      "name": "file-sha256-v1-single-byte-A",
+      "note": "Worked example matching protocol-v1.md §12.1. File containing the single byte 0x41 ('A').",
+      "input": {
+        "protocolVersion": "1.0",
+        "leafType": "file/sha256/v1",
+        "hashAlgorithm": "sha256",
+        "payloadHex": "41"
+      },
+      "expected": {
+        "payloadHashHex": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd",
+        "leafHashInputLengthBytes": 72,
+        "leafHashInputHex": "0000000003312e300000000e66696c652f7368613235362f76310000000673686132353600000020559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd",
+        "leafHashHex": "c0a9acf68a3b0a044bdc477d1e66048d458f4a42482418831dbdcdb2106a90fd"
+      }
+    }
+  ]
+}

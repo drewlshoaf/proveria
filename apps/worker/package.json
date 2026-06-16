@@ -1,0 +1,45 @@
+{
+  "name": "@proveria/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf dist .turbo",
+    "lint": "echo 'TODO(lint): wire eslint'",
+    "test": "vitest run",
+    "smoke:pdf-text-layer": "tsx scripts/v2-pdf-text-layer-smoke.ts",
+    "smoke:exact-image": "tsx scripts/v3-exact-image-smoke.ts",
+    "smoke:ocr-pdf": "tsx scripts/v3-ocr-pdf-smoke.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.717.0",
+    "@napi-rs/canvas": "^1.0.0",
+    "@proveria/audit": "workspace:*",
+    "@proveria/crypto-core": "workspace:*",
+    "@proveria/db": "workspace:*",
+    "@proveria/evidence-export": "workspace:*",
+    "@proveria/manifest": "workspace:*",
+    "@proveria/ocr": "workspace:*",
+    "@proveria/proofs": "workspace:*",
+    "@proveria/receipt": "workspace:*",
+    "@proveria/shared-types": "workspace:*",
+    "@proveria/shingling": "workspace:*",
+    "bullmq": "^5.34.10",
+    "drizzle-orm": "^0.36.4",
+    "ioredis": "^5.4.2",
+    "pdf-lib": "^1.17.1",
+    "pino": "^9.5.0",
+    "playwright": "^1.60.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.6",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

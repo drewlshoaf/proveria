@@ -1,0 +1,29 @@
+{
+  "name": "@proveria/hash-cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "proveria-hash": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf dist .turbo",
+    "lint": "echo 'TODO(lint): wire eslint'",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@proveria/crypto-core": "workspace:*",
+    "@proveria/shared-types": "workspace:*",
+    "@proveria/proofs": "workspace:*",
+    "@proveria/shingling": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

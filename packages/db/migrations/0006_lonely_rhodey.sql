@@ -1,0 +1,1 @@
+ALTER TABLE "attestations" ADD COLUMN "package_id" text;

@@ -1,0 +1,44 @@
+# Don't ship the host's installed deps + build artifacts into Docker
+# build contexts. pnpm install runs INSIDE the image; .next / dist /
+# release etc. are regenerated. Keeping these out keeps the build
+# context small (~10 MB instead of ~2 GB).
+
+node_modules
+**/node_modules
+.pnpm-store
+
+# Build outputs
+**/dist
+**/.next
+**/.turbo
+**/release
+**/dist-electron
+*.tsbuildinfo
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Local
+.env
+.env.local
+.env.*.local
+
+# Test / coverage
+coverage
+.nyc_output
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Docker itself
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# Runtime caches that get downloaded into apps/* on first run
+**/eng.traineddata
+**/tessdata*
