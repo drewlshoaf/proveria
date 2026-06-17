@@ -6,6 +6,6 @@
 
 ## Product Screenshots
 
-![Private verifier lookup result](docs/architecture/assets/private-verifier-lookup-result.png)
-
 ![Attestation detail](docs/architecture/assets/attestation-detail.png)
+
+![Private verifier lookup result](docs/architecture/assets/private-verifier-lookup-result.png)
