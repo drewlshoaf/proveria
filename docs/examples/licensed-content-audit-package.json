@@ -1,0 +1,119 @@
+{
+  "record_type": "licensed_content_audit_package",
+  "schema_version": "0.1",
+  "audit": {
+    "audit_id": "audit_newswire_2026_q2",
+    "title": "Newswire Q2 2026 training-data license audit",
+    "purpose": "Rights-holder review of whether licensed and prohibited publisher content appears in a committed dataset revision.",
+    "status": "ready_for_rights_holder_review",
+    "created_at": "2026-06-18T14:00:00Z",
+    "prepared_by": "Data Governance",
+    "review_window": {
+      "starts_at": "2026-06-18T14:00:00Z",
+      "ends_at": "2026-07-18T14:00:00Z"
+    }
+  },
+  "producer": {
+    "organization": "Example AI Lab",
+    "workspace_slug": "evaluation-workspace",
+    "project_slug": "ai-dataset-provenance",
+    "contact": "data-governance@example.com"
+  },
+  "rights_holder": {
+    "organization": "Example Newswire",
+    "contact": "publisher-audit@example-newswire.test",
+    "license_reference": "NEWSWIRE-TRAINING-2026-Q2",
+    "license_scope": "licensed_articles_2026_q2"
+  },
+  "dataset": {
+    "name": "Training Dataset",
+    "previous_version": "2026.06",
+    "next_version": "2026.07",
+    "data_classification": "confidential",
+    "retention_rule": "7 years",
+    "raw_files_uploaded_to_proveria": false
+  },
+  "receipts": {
+    "previous_inventory": {
+      "attestation_id": "att_previous_inventory_replace_me",
+      "label": "Training Dataset 2026.06 inventory",
+      "dataset_root_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "receipt_url": "http://127.0.0.1:3001/v/vrf_previous_inventory_replace_me"
+    },
+    "next_inventory": {
+      "attestation_id": "att_next_inventory_replace_me",
+      "label": "Training Dataset 2026.07 inventory",
+      "dataset_root_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "receipt_url": "http://127.0.0.1:3001/v/vrf_next_inventory_replace_me"
+    },
+    "revision": {
+      "attestation_id": "att_revision_replace_me",
+      "label": "Training Dataset 2026.06 to 2026.07 revision",
+      "revision_root_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "receipt_url": "http://127.0.0.1:3001/v/vrf_revision_replace_me"
+    },
+    "evidence_export_job_id": "export_job_replace_me"
+  },
+  "revision_summary": {
+    "new_file_count": 18,
+    "changed_file_count": 7,
+    "removed_file_count": 3,
+    "unchanged_file_count": 1222,
+    "publisher_relevant_paths": [
+      "licensed/example-newswire/2026-q2/article-001.txt",
+      "licensed/example-newswire/2026-q2/article-014.txt",
+      "excluded/example-newswire/prohibited/article-991.txt"
+    ]
+  },
+  "sample_verification_plan": {
+    "allowed_checks": [
+      "whole_file_hash",
+      "content_passage_hash"
+    ],
+    "sample_size": 10,
+    "sampling_basis": "Rights-holder selected passages from licensed and prohibited works.",
+    "private_verifier_lookup_url": "http://127.0.0.1:3003/lookup/replace_me",
+    "verifier_email": "publisher-audit@example-newswire.test"
+  },
+  "publisher_queries": [
+    {
+      "query_id": "licensed_article_001_present",
+      "question": "Was this licensed article included in the committed dataset revision?",
+      "expected_result": "match",
+      "submitted_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "verification_result_package_id": "pkg_replace_me"
+    },
+    {
+      "query_id": "prohibited_article_991_absent",
+      "question": "Was this prohibited article absent from the committed dataset revision?",
+      "expected_result": "no_match",
+      "submitted_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "verification_result_package_id": "pkg_replace_me"
+    }
+  ],
+  "disclosure": {
+    "mode": "public_receipts_private_evidence",
+    "public_fields": [
+      "audit.audit_id",
+      "audit.title",
+      "rights_holder.organization",
+      "dataset.name",
+      "dataset.previous_version",
+      "dataset.next_version",
+      "receipts",
+      "revision_summary"
+    ],
+    "private_evidence": [
+      "raw dataset files",
+      "full file inventory paths if sensitive",
+      "licensed publisher source files",
+      "full evidence export bundle unless explicitly shared"
+    ],
+    "redaction_profile": "rights_holder_audit_minimum"
+  },
+  "integrity": {
+    "package_hash_algorithm": "sha256",
+    "package_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "notes": "Hash this package after filling replacement identifiers and attach it as compliance evidence or include it in the evidence export bundle."
+  }
+}

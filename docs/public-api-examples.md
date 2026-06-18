@@ -206,6 +206,11 @@ proveria dataset collect ./dataset --output ./dataset-inventory.json --name "Tra
 proveria dataset attest ./dataset-inventory.json --project evaluation-evidence
 ```
 
+For publisher or rights-holder reviews, combine dataset inventory and revision
+receipts with sampled verification results using
+`docs/v6-licensed-content-audit-package.md`. A starter package is available at
+`docs/examples/licensed-content-audit-package.json`.
+
 ```bash
 curl -sS "$PROVERIA_API_URL/v1/tenants/$PROVERIA_WORKSPACE/attestations/<attestation-id>" \
   -H "Authorization: Bearer $PROVERIA_API_KEY"

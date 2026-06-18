@@ -123,6 +123,20 @@ dataset name, version, file count, total bytes, dataset root hash, and
 classification metadata. A revision receipt proves the committed change set
 between two inventory root hashes.
 
+## 8. Prepare A Licensed-Content Audit Package
+
+For publisher, rights-holder, or legal/compliance review, use
+`docs/v6-licensed-content-audit-package.md` and the sample package at
+`docs/examples/licensed-content-audit-package.json`.
+
+The package ties together:
+
+- previous and current inventory receipts;
+- the revision receipt;
+- scoped verifier access for the rights-holder;
+- sampled match and no-match verification result packages;
+- an optional evidence export bundle.
+
 ## Privacy Boundary
 
 Stored by Proveria:
