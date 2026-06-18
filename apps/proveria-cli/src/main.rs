@@ -479,9 +479,11 @@ enum DatasetSubcommand {
     Init(DatasetInit),
     /// Hash a local folder into a dataset inventory record.
     Collect(DatasetCollect),
+    /// Compare two dataset inventory records into a revision record.
+    Revision(DatasetRevision),
     /// Inspect the canonical hash and API metadata for a dataset inventory record.
     Inspect(DatasetInspect),
-    /// Canonicalize, hash, and attest a dataset inventory record.
+    /// Canonicalize, hash, and attest a dataset inventory or revision record.
     Attest(DatasetAttest),
 }
 
@@ -522,8 +524,20 @@ struct DatasetCollect {
 }
 
 #[derive(Args)]
+struct DatasetRevision {
+    #[arg(long, value_name = "DATASET_INVENTORY_JSON")]
+    base: PathBuf,
+
+    #[arg(long, value_name = "DATASET_INVENTORY_JSON")]
+    next: PathBuf,
+
+    #[arg(long, value_name = "FILE")]
+    output: PathBuf,
+}
+
+#[derive(Args)]
 struct DatasetInspect {
-    #[arg(value_name = "DATASET_INVENTORY_JSON")]
+    #[arg(value_name = "DATASET_RECORD_JSON")]
     file: PathBuf,
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
@@ -532,7 +546,7 @@ struct DatasetInspect {
 
 #[derive(Args)]
 struct DatasetAttest {
-    #[arg(value_name = "DATASET_INVENTORY_JSON")]
+    #[arg(value_name = "DATASET_RECORD_JSON")]
     file: PathBuf,
 
     #[arg(long)]
@@ -2499,15 +2513,56 @@ struct DatasetInventorySourceMetadata {
 
 #[derive(Debug)]
 struct DatasetInventoryRecordPackage {
+    record: serde_json::Value,
     canonical_json: String,
     canonical_hash: String,
     metadata: DatasetInventorySourceMetadata,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DatasetRevisionSourceMetadata {
+    provider: &'static str,
+    record_type: String,
+    schema_version: String,
+    canonical_hash: String,
+    dataset_name: String,
+    previous_dataset_version: String,
+    next_dataset_version: String,
+    previous_dataset_root_hash: String,
+    next_dataset_root_hash: String,
+    revision_root_hash: String,
+    new_file_count: u64,
+    changed_file_count: u64,
+    removed_file_count: u64,
+    unchanged_file_count: u64,
+}
+
+#[derive(Debug)]
+enum DatasetRecordMetadata {
+    Inventory(DatasetInventorySourceMetadata),
+    Revision(DatasetRevisionSourceMetadata),
+}
+
+#[derive(Debug)]
+struct DatasetRecordPackage {
+    canonical_json: String,
+    canonical_hash: String,
+    metadata: DatasetRecordMetadata,
+}
+
+#[derive(Debug)]
+struct DatasetRevisionRecordPackage {
+    canonical_json: String,
+    canonical_hash: String,
+    metadata: DatasetRevisionSourceMetadata,
 }
 
 async fn run_dataset(ctx: AppContext, command: DatasetCommand) -> Result<()> {
     match command.command {
         DatasetSubcommand::Init(input) => run_dataset_init(input),
         DatasetSubcommand::Collect(input) => run_dataset_collect(input),
+        DatasetSubcommand::Revision(input) => run_dataset_revision(input),
         DatasetSubcommand::Inspect(input) => run_dataset_inspect(input),
         DatasetSubcommand::Attest(input) => run_dataset_attest(ctx, input).await,
     }
@@ -2553,29 +2608,89 @@ fn run_dataset_collect(input: DatasetCollect) -> Result<()> {
     Ok(())
 }
 
+fn run_dataset_revision(input: DatasetRevision) -> Result<()> {
+    if input.output.exists() {
+        bail!(
+            "{} already exists. Remove it or choose a different --output path.",
+            input.output.display()
+        );
+    }
+    let base = read_dataset_inventory_record(&input.base)?;
+    let next = read_dataset_inventory_record(&input.next)?;
+    let record = build_dataset_revision_record(&base.record, &next.record)?;
+    let body = serde_json::to_string_pretty(&record)?;
+    fs::write(&input.output, format!("{body}\n"))
+        .with_context(|| format!("could not write {}", input.output.display()))?;
+    let package = dataset_revision_package(&record)?;
+    println!("Wrote {}", input.output.display());
+    println!(
+        "dataset: {} {} -> {}",
+        package.metadata.dataset_name,
+        package.metadata.previous_dataset_version,
+        package.metadata.next_dataset_version
+    );
+    println!("new_files: {}", package.metadata.new_file_count);
+    println!("changed_files: {}", package.metadata.changed_file_count);
+    println!("removed_files: {}", package.metadata.removed_file_count);
+    println!("unchanged_files: {}", package.metadata.unchanged_file_count);
+    println!(
+        "revision_root_hash: {}",
+        package.metadata.revision_root_hash
+    );
+    println!("canonical_hash: {}", package.canonical_hash);
+    Ok(())
+}
+
 fn run_dataset_inspect(input: DatasetInspect) -> Result<()> {
-    let package = read_dataset_inventory_record(&input.file)?;
+    let package = read_dataset_record(&input.file)?;
     match input.output {
-        OutputFormat::Text => {
-            println!("record_type: {}", package.metadata.record_type);
-            println!("schema_version: {}", package.metadata.schema_version);
-            println!(
-                "dataset: {} {}",
-                package.metadata.dataset_name, package.metadata.dataset_version
-            );
-            println!("files: {}", package.metadata.file_count);
-            println!("total_bytes: {}", package.metadata.total_bytes);
-            println!("dataset_root_hash: {}", package.metadata.dataset_root_hash);
-            println!("canonical_hash: {}", package.canonical_hash);
-            println!("canonical_bytes: {}", package.canonical_json.len());
-        }
+        OutputFormat::Text => match &package.metadata {
+            DatasetRecordMetadata::Inventory(metadata) => {
+                println!("record_type: {}", metadata.record_type);
+                println!("schema_version: {}", metadata.schema_version);
+                println!(
+                    "dataset: {} {}",
+                    metadata.dataset_name, metadata.dataset_version
+                );
+                println!("files: {}", metadata.file_count);
+                println!("total_bytes: {}", metadata.total_bytes);
+                println!("dataset_root_hash: {}", metadata.dataset_root_hash);
+                println!("canonical_hash: {}", package.canonical_hash);
+                println!("canonical_bytes: {}", package.canonical_json.len());
+            }
+            DatasetRecordMetadata::Revision(metadata) => {
+                println!("record_type: {}", metadata.record_type);
+                println!("schema_version: {}", metadata.schema_version);
+                println!(
+                    "dataset: {} {} -> {}",
+                    metadata.dataset_name,
+                    metadata.previous_dataset_version,
+                    metadata.next_dataset_version
+                );
+                println!("new_files: {}", metadata.new_file_count);
+                println!("changed_files: {}", metadata.changed_file_count);
+                println!("removed_files: {}", metadata.removed_file_count);
+                println!("unchanged_files: {}", metadata.unchanged_file_count);
+                println!(
+                    "previous_dataset_root_hash: {}",
+                    metadata.previous_dataset_root_hash
+                );
+                println!(
+                    "next_dataset_root_hash: {}",
+                    metadata.next_dataset_root_hash
+                );
+                println!("revision_root_hash: {}", metadata.revision_root_hash);
+                println!("canonical_hash: {}", package.canonical_hash);
+                println!("canonical_bytes: {}", package.canonical_json.len());
+            }
+        },
         OutputFormat::Json => {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&json!({
                     "canonicalHash": package.canonical_hash,
                     "canonicalBytes": package.canonical_json.len(),
-                    "sourceMetadata": package.metadata,
+                    "sourceMetadata": source_metadata_json(&package.metadata)?,
                 }))?
             );
         }
@@ -2585,19 +2700,16 @@ fn run_dataset_inspect(input: DatasetInspect) -> Result<()> {
 
 async fn run_dataset_attest(ctx: AppContext, input: DatasetAttest) -> Result<()> {
     let workspace = require_workspace(&ctx)?;
-    let package = read_dataset_inventory_record(&input.file)?;
+    let package = read_dataset_record(&input.file)?;
     let file_name = input
         .file
         .file_name()
         .and_then(|name| name.to_str())
-        .ok_or_else(|| anyhow!("dataset inventory file name is not valid UTF-8"))?
+        .ok_or_else(|| anyhow!("dataset record file name is not valid UTF-8"))?
         .to_string();
-    let label = input.name.unwrap_or_else(|| {
-        format!(
-            "{} {} inventory",
-            package.metadata.dataset_name, package.metadata.dataset_version
-        )
-    });
+    let label = input
+        .name
+        .unwrap_or_else(|| default_dataset_label(&package.metadata));
 
     let mut body = serde_json::Map::new();
     body.insert("label".to_string(), json!(label));
@@ -2609,7 +2721,7 @@ async fn run_dataset_attest(ctx: AppContext, input: DatasetAttest) -> Result<()>
     );
     body.insert(
         "sourceMetadata".to_string(),
-        serde_json::to_value(&package.metadata)?,
+        source_metadata_json(&package.metadata)?,
     );
 
     let idempotency_key = attestation_idempotency_key(
@@ -2620,7 +2732,7 @@ async fn run_dataset_attest(ctx: AppContext, input: DatasetAttest) -> Result<()>
             .unwrap_or("dataset-inventory"),
         body.get("fileName")
             .and_then(|value| value.as_str())
-            .unwrap_or("dataset-inventory.json"),
+            .unwrap_or("dataset-record.json"),
         body.get("sha256")
             .and_then(|value| value.as_str())
             .unwrap_or_default(),
@@ -2638,7 +2750,7 @@ async fn run_dataset_attest(ctx: AppContext, input: DatasetAttest) -> Result<()>
     .await?;
     match input.output {
         OutputFormat::Text => {
-            println!("Submitted dataset inventory receipt");
+            println!("Submitted dataset receipt");
             println!("canonical_hash: {}", package.canonical_hash);
             println!("{}", serde_json::to_string_pretty(&response.data)?);
         }
@@ -2658,11 +2770,52 @@ fn read_dataset_inventory_record(path: &Path) -> Result<DatasetInventoryRecordPa
     dataset_inventory_package(&parsed)
 }
 
+fn read_dataset_record(path: &Path) -> Result<DatasetRecordPackage> {
+    let text =
+        fs::read_to_string(path).with_context(|| format!("could not read {}", path.display()))?;
+    let parsed: serde_json::Value = serde_json::from_str(&text)
+        .with_context(|| format!("could not parse {}", path.display()))?;
+    if !parsed.is_object() {
+        bail!("dataset record must be a JSON object");
+    }
+    match parsed.get("record_type").and_then(|value| value.as_str()) {
+        Some("dataset_inventory_record") => {
+            let package = dataset_inventory_package(&parsed)?;
+            Ok(DatasetRecordPackage {
+                canonical_json: package.canonical_json,
+                canonical_hash: package.canonical_hash,
+                metadata: DatasetRecordMetadata::Inventory(package.metadata),
+            })
+        }
+        Some("dataset_revision_record") => {
+            let package = dataset_revision_package(&parsed)?;
+            Ok(DatasetRecordPackage {
+                canonical_json: package.canonical_json,
+                canonical_hash: package.canonical_hash,
+                metadata: DatasetRecordMetadata::Revision(package.metadata),
+            })
+        }
+        _ => bail!("record_type must be dataset_inventory_record or dataset_revision_record"),
+    }
+}
+
 fn dataset_inventory_package(record: &serde_json::Value) -> Result<DatasetInventoryRecordPackage> {
     let canonical = canonical_json(record);
     let canonical_hash = hex::encode(Sha256::digest(canonical.as_bytes()));
     let metadata = dataset_inventory_metadata(record, canonical_hash.clone())?;
     Ok(DatasetInventoryRecordPackage {
+        record: record.clone(),
+        canonical_json: canonical,
+        canonical_hash,
+        metadata,
+    })
+}
+
+fn dataset_revision_package(record: &serde_json::Value) -> Result<DatasetRevisionRecordPackage> {
+    let canonical = canonical_json(record);
+    let canonical_hash = hex::encode(Sha256::digest(canonical.as_bytes()));
+    let metadata = dataset_revision_metadata(record, canonical_hash.clone())?;
+    Ok(DatasetRevisionRecordPackage {
         canonical_json: canonical,
         canonical_hash,
         metadata,
@@ -2693,6 +2846,168 @@ fn dataset_inventory_metadata(
         license_usage_basis: optional_string(record, &["dataset", "license_usage_basis"])?,
         retention_rule: optional_string(record, &["dataset", "retention_rule"])?,
     })
+}
+
+fn dataset_revision_metadata(
+    record: &serde_json::Value,
+    canonical_hash: String,
+) -> Result<DatasetRevisionSourceMetadata> {
+    let record_type = required_string(record, &["record_type"])?;
+    if record_type != "dataset_revision_record" {
+        bail!("record_type must be dataset_revision_record");
+    }
+    Ok(DatasetRevisionSourceMetadata {
+        provider: "dataset_revision",
+        record_type,
+        schema_version: required_string(record, &["schema_version"])?,
+        canonical_hash,
+        dataset_name: required_string(record, &["dataset", "name"])?,
+        previous_dataset_version: required_string(record, &["dataset", "previous_version"])?,
+        next_dataset_version: required_string(record, &["dataset", "next_version"])?,
+        previous_dataset_root_hash: required_sha256(
+            record,
+            &["summary", "previous_dataset_root_hash"],
+        )?,
+        next_dataset_root_hash: required_sha256(record, &["summary", "next_dataset_root_hash"])?,
+        revision_root_hash: required_sha256(record, &["summary", "revision_root_hash"])?,
+        new_file_count: required_u64(record, &["summary", "new_file_count"])?,
+        changed_file_count: required_u64(record, &["summary", "changed_file_count"])?,
+        removed_file_count: required_u64(record, &["summary", "removed_file_count"])?,
+        unchanged_file_count: required_u64(record, &["summary", "unchanged_file_count"])?,
+    })
+}
+
+fn source_metadata_json(metadata: &DatasetRecordMetadata) -> Result<serde_json::Value> {
+    match metadata {
+        DatasetRecordMetadata::Inventory(metadata) => Ok(serde_json::to_value(metadata)?),
+        DatasetRecordMetadata::Revision(metadata) => Ok(serde_json::to_value(metadata)?),
+    }
+}
+
+fn default_dataset_label(metadata: &DatasetRecordMetadata) -> String {
+    match metadata {
+        DatasetRecordMetadata::Inventory(metadata) => {
+            format!(
+                "{} {} inventory",
+                metadata.dataset_name, metadata.dataset_version
+            )
+        }
+        DatasetRecordMetadata::Revision(metadata) => format!(
+            "{} {} to {} revision",
+            metadata.dataset_name, metadata.previous_dataset_version, metadata.next_dataset_version
+        ),
+    }
+}
+
+fn build_dataset_revision_record(
+    base: &serde_json::Value,
+    next: &serde_json::Value,
+) -> Result<serde_json::Value> {
+    let base_meta = dataset_inventory_metadata(base, sample_hash("base-inventory"))?;
+    let next_meta = dataset_inventory_metadata(next, sample_hash("next-inventory"))?;
+    if base_meta.dataset_name != next_meta.dataset_name {
+        bail!("dataset.name must match between base and next inventory records");
+    }
+
+    let base_files = dataset_file_map(base)?;
+    let next_files = dataset_file_map(next)?;
+    let mut new_files = Vec::new();
+    let mut changed_files = Vec::new();
+    let mut removed_files = Vec::new();
+    let mut unchanged_files = Vec::new();
+
+    for (path, next_file) in &next_files {
+        match base_files.get(path) {
+            None => new_files.push(json!({
+                "path": path,
+                "sha256": next_file.sha256,
+                "byte_size": next_file.byte_size,
+            })),
+            Some(base_file) if base_file.sha256 != next_file.sha256 => changed_files.push(json!({
+                "path": path,
+                "previous_sha256": base_file.sha256,
+                "next_sha256": next_file.sha256,
+                "previous_byte_size": base_file.byte_size,
+                "next_byte_size": next_file.byte_size,
+            })),
+            Some(_) => unchanged_files.push(json!({
+                "path": path,
+                "sha256": next_file.sha256,
+                "byte_size": next_file.byte_size,
+            })),
+        }
+    }
+    for (path, base_file) in &base_files {
+        if !next_files.contains_key(path) {
+            removed_files.push(json!({
+                "path": path,
+                "sha256": base_file.sha256,
+                "byte_size": base_file.byte_size,
+            }));
+        }
+    }
+
+    let changes = json!({
+        "new": new_files,
+        "changed": changed_files,
+        "removed": removed_files,
+        "unchanged": unchanged_files,
+    });
+    let revision_root_hash = hex::encode(Sha256::digest(canonical_json(&changes).as_bytes()));
+
+    Ok(json!({
+        "record_type": "dataset_revision_record",
+        "schema_version": "0.1",
+        "dataset": {
+            "name": base_meta.dataset_name,
+            "previous_version": base_meta.dataset_version,
+            "next_version": next_meta.dataset_version,
+        },
+        "summary": {
+            "new_file_count": changes["new"].as_array().map(Vec::len).unwrap_or(0) as u64,
+            "changed_file_count": changes["changed"].as_array().map(Vec::len).unwrap_or(0) as u64,
+            "removed_file_count": changes["removed"].as_array().map(Vec::len).unwrap_or(0) as u64,
+            "unchanged_file_count": changes["unchanged"].as_array().map(Vec::len).unwrap_or(0) as u64,
+            "previous_dataset_root_hash": base_meta.dataset_root_hash,
+            "next_dataset_root_hash": next_meta.dataset_root_hash,
+            "revision_root_hash": revision_root_hash,
+            "hash_algorithm": "sha256",
+        },
+        "changes": changes,
+        "privacy": {
+            "raw_files_uploaded_to_proveria": false,
+            "stored_by_proveria": ["canonical revision hash", "path-level change hashes if revision record is submitted separately"],
+            "local_only": ["raw dataset file bytes"]
+        }
+    }))
+}
+
+#[derive(Debug)]
+struct DatasetFileEntry {
+    sha256: String,
+    byte_size: u64,
+}
+
+fn dataset_file_map(record: &serde_json::Value) -> Result<BTreeMap<String, DatasetFileEntry>> {
+    let files = record
+        .get("files")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| anyhow!("dataset inventory record must include a files array"))?;
+    let mut map = BTreeMap::new();
+    for file in files {
+        let path = required_string(file, &["path"])?;
+        if map.contains_key(&path) {
+            bail!("dataset inventory record contains duplicate file path {path}");
+        }
+        map.insert(
+            path,
+            DatasetFileEntry {
+                sha256: required_sha256(file, &["sha256"])?,
+                byte_size: required_u64(file, &["byte_size"])?,
+            },
+        );
+    }
+    Ok(map)
 }
 
 fn collect_dataset_inventory(input: &DatasetCollect) -> Result<serde_json::Value> {
@@ -5289,6 +5604,69 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn builds_dataset_revision_record_from_inventory_records() {
+        let base = json!({
+            "record_type": "dataset_inventory_record",
+            "schema_version": "0.1",
+            "dataset": {
+                "name": "Fixture Dataset",
+                "version": "v1",
+                "inventory_scope": "folder",
+                "data_classification": "internal",
+            },
+            "summary": {
+                "file_count": 3,
+                "total_bytes": 30,
+                "dataset_root_hash": "a".repeat(64),
+                "hash_algorithm": "sha256",
+            },
+            "files": [
+                { "path": "changed.txt", "sha256": "b".repeat(64), "byte_size": 10 },
+                { "path": "removed.txt", "sha256": "c".repeat(64), "byte_size": 10 },
+                { "path": "stable.txt", "sha256": "d".repeat(64), "byte_size": 10 }
+            ]
+        });
+        let next = json!({
+            "record_type": "dataset_inventory_record",
+            "schema_version": "0.1",
+            "dataset": {
+                "name": "Fixture Dataset",
+                "version": "v2",
+                "inventory_scope": "folder",
+                "data_classification": "internal",
+            },
+            "summary": {
+                "file_count": 3,
+                "total_bytes": 33,
+                "dataset_root_hash": "e".repeat(64),
+                "hash_algorithm": "sha256",
+            },
+            "files": [
+                { "path": "changed.txt", "sha256": "f".repeat(64), "byte_size": 13 },
+                { "path": "new.txt", "sha256": "1".repeat(64), "byte_size": 10 },
+                { "path": "stable.txt", "sha256": "d".repeat(64), "byte_size": 10 }
+            ]
+        });
+
+        let revision = build_dataset_revision_record(&base, &next).expect("builds revision");
+        let package = dataset_revision_package(&revision).expect("packages revision");
+
+        assert_eq!(package.metadata.provider, "dataset_revision");
+        assert_eq!(package.metadata.record_type, "dataset_revision_record");
+        assert_eq!(package.metadata.dataset_name, "Fixture Dataset");
+        assert_eq!(package.metadata.previous_dataset_version, "v1");
+        assert_eq!(package.metadata.next_dataset_version, "v2");
+        assert_eq!(package.metadata.new_file_count, 1);
+        assert_eq!(package.metadata.changed_file_count, 1);
+        assert_eq!(package.metadata.removed_file_count, 1);
+        assert_eq!(package.metadata.unchanged_file_count, 1);
+        assert_eq!(revision["changes"]["new"][0]["path"], "new.txt");
+        assert_eq!(revision["changes"]["changed"][0]["path"], "changed.txt");
+        assert_eq!(revision["changes"]["removed"][0]["path"], "removed.txt");
+        assert_eq!(revision["changes"]["unchanged"][0]["path"], "stable.txt");
     }
 
     #[test]

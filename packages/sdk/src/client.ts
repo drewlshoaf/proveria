@@ -5,6 +5,7 @@ import {
   type ApiKeyCredential,
   type Attestation,
   type CreateDatasetInventoryAttestationInput,
+  type CreateDatasetRevisionAttestationInput,
   type CreateModelReleaseAttestationInput,
   type CreateProjectInput,
   type CreateWebhookEndpointInput,
@@ -24,6 +25,7 @@ import {
   type ListProjectsOptions,
   type ListWebhooksOptions,
   type DatasetInventorySourceMetadata,
+  type DatasetRevisionSourceMetadata,
   type ModelReleaseSourceMetadata,
   type OpenApiDocument,
   type PaginatedApiEnvelope,
@@ -400,6 +402,25 @@ class AttestationsApi {
     });
   }
 
+  async createDatasetRevision(
+    input: CreateDatasetRevisionAttestationInput,
+  ): Promise<ApiEnvelope<Attestation>> {
+    const canonical = canonicalJsonStable(input.record);
+    const canonicalHash = sha256HexString(canonical);
+    const sourceMetadata = datasetRevisionSourceMetadata(input.record, canonicalHash);
+    return this.createHash({
+      project: input.project,
+      label:
+        input.label ??
+        `${sourceMetadata.datasetName} ${sourceMetadata.previousDatasetVersion} to ${sourceMetadata.nextDatasetVersion} revision`,
+      sha256: canonicalHash,
+      fileName: input.fileName ?? 'dataset-revision.json',
+      byteSize: new TextEncoder().encode(canonical).byteLength,
+      sourceMetadata,
+      idempotencyKey: input.idempotencyKey,
+    });
+  }
+
   async get(id: string): Promise<ApiEnvelope<Attestation>> {
     return this.client.request(this.client.tenantPath(`/attestations/${encodeURIComponent(id)}`));
   }
@@ -735,6 +756,32 @@ const datasetInventorySourceMetadata = (
     ...(sourceOwner ? { sourceOwner } : {}),
     ...(licenseUsageBasis ? { licenseUsageBasis } : {}),
     ...(retentionRule ? { retentionRule } : {}),
+  };
+};
+
+const datasetRevisionSourceMetadata = (
+  record: Record<string, unknown>,
+  canonicalHash: string,
+): DatasetRevisionSourceMetadata => {
+  const recordType = requiredString(record, ['record_type']);
+  if (recordType !== 'dataset_revision_record') {
+    throw new Error('record_type must be dataset_revision_record.');
+  }
+  return {
+    provider: 'dataset_revision',
+    recordType: 'dataset_revision_record',
+    schemaVersion: requiredString(record, ['schema_version']),
+    canonicalHash,
+    datasetName: requiredString(record, ['dataset', 'name']),
+    previousDatasetVersion: requiredString(record, ['dataset', 'previous_version']),
+    nextDatasetVersion: requiredString(record, ['dataset', 'next_version']),
+    previousDatasetRootHash: requiredSha256(record, ['summary', 'previous_dataset_root_hash']),
+    nextDatasetRootHash: requiredSha256(record, ['summary', 'next_dataset_root_hash']),
+    revisionRootHash: requiredSha256(record, ['summary', 'revision_root_hash']),
+    newFileCount: requiredNumber(record, ['summary', 'new_file_count']),
+    changedFileCount: requiredNumber(record, ['summary', 'changed_file_count']),
+    removedFileCount: requiredNumber(record, ['summary', 'removed_file_count']),
+    unchangedFileCount: requiredNumber(record, ['summary', 'unchanged_file_count']),
   };
 };
 

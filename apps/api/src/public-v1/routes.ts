@@ -896,9 +896,30 @@ interface DatasetInventorySourceMetadata {
   retentionRule?: string;
 }
 
+interface DatasetRevisionSourceMetadata {
+  [key: string]: unknown;
+  provider: 'dataset_revision';
+  recordType: 'dataset_revision_record';
+  schemaVersion: string;
+  canonicalHash: string;
+  datasetName: string;
+  previousDatasetVersion: string;
+  nextDatasetVersion: string;
+  previousDatasetRootHash: string;
+  nextDatasetRootHash: string;
+  revisionRootHash: string;
+  newFileCount: number;
+  changedFileCount: number;
+  removedFileCount: number;
+  unchangedFileCount: number;
+  createdByUserId: string;
+  createdAt: string;
+}
+
 type PublicAttestationSourceMetadata =
   | ModelReleaseSourceMetadata
-  | DatasetInventorySourceMetadata;
+  | DatasetInventorySourceMetadata
+  | DatasetRevisionSourceMetadata;
 
 const modelReleaseSourceMetadataSchema = {
   oneOf: [
@@ -994,6 +1015,42 @@ const modelReleaseSourceMetadataSchema = {
         sourceOwner: { type: 'string', maxLength: 256 },
         licenseUsageBasis: { type: 'string', maxLength: 512 },
         retentionRule: { type: 'string', maxLength: 256 },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'provider',
+        'recordType',
+        'schemaVersion',
+        'canonicalHash',
+        'datasetName',
+        'previousDatasetVersion',
+        'nextDatasetVersion',
+        'previousDatasetRootHash',
+        'nextDatasetRootHash',
+        'revisionRootHash',
+        'newFileCount',
+        'changedFileCount',
+        'removedFileCount',
+        'unchangedFileCount',
+      ],
+      properties: {
+        provider: { const: 'dataset_revision' },
+        recordType: { const: 'dataset_revision_record' },
+        schemaVersion: { type: 'string', minLength: 1, maxLength: 32 },
+        canonicalHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        datasetName: { type: 'string', minLength: 1, maxLength: 256 },
+        previousDatasetVersion: { type: 'string', minLength: 1, maxLength: 128 },
+        nextDatasetVersion: { type: 'string', minLength: 1, maxLength: 128 },
+        previousDatasetRootHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        nextDatasetRootHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        revisionRootHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        newFileCount: { type: 'integer', minimum: 0 },
+        changedFileCount: { type: 'integer', minimum: 0 },
+        removedFileCount: { type: 'integer', minimum: 0 },
+        unchangedFileCount: { type: 'integer', minimum: 0 },
       },
     },
   ],
@@ -1123,6 +1180,57 @@ const datasetInventorySourceMetadataFromBody = (
   };
 };
 
+const datasetRevisionSourceMetadataFromBody = (
+  value: unknown,
+  createdByUserId: string,
+): DatasetRevisionSourceMetadata | null => {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const requiredStrings = [
+    raw.recordType,
+    raw.schemaVersion,
+    raw.canonicalHash,
+    raw.datasetName,
+    raw.previousDatasetVersion,
+    raw.nextDatasetVersion,
+    raw.previousDatasetRootHash,
+    raw.nextDatasetRootHash,
+    raw.revisionRootHash,
+  ];
+  const requiredCounts = [
+    raw.newFileCount,
+    raw.changedFileCount,
+    raw.removedFileCount,
+    raw.unchangedFileCount,
+  ];
+  if (
+    raw.provider !== 'dataset_revision' ||
+    raw.recordType !== 'dataset_revision_record' ||
+    requiredStrings.some((field) => typeof field !== 'string') ||
+    requiredCounts.some((field) => typeof field !== 'number' || !Number.isInteger(field))
+  ) {
+    return null;
+  }
+  return {
+    provider: 'dataset_revision',
+    recordType: 'dataset_revision_record',
+    schemaVersion: raw.schemaVersion as string,
+    canonicalHash: raw.canonicalHash as string,
+    datasetName: raw.datasetName as string,
+    previousDatasetVersion: raw.previousDatasetVersion as string,
+    nextDatasetVersion: raw.nextDatasetVersion as string,
+    previousDatasetRootHash: raw.previousDatasetRootHash as string,
+    nextDatasetRootHash: raw.nextDatasetRootHash as string,
+    revisionRootHash: raw.revisionRootHash as string,
+    newFileCount: raw.newFileCount as number,
+    changedFileCount: raw.changedFileCount as number,
+    removedFileCount: raw.removedFileCount as number,
+    unchangedFileCount: raw.unchangedFileCount as number,
+    createdByUserId,
+    createdAt: new Date().toISOString(),
+  };
+};
+
 const sourceMetadataFromBody = (
   value: unknown,
   createdByUserId: string,
@@ -1134,6 +1242,9 @@ const sourceMetadataFromBody = (
   }
   if (provider === 'dataset_inventory') {
     return datasetInventorySourceMetadataFromBody(value, createdByUserId);
+  }
+  if (provider === 'dataset_revision') {
+    return datasetRevisionSourceMetadataFromBody(value, createdByUserId);
   }
   return null;
 };
@@ -2003,6 +2114,25 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
                   },
                 }
               : {}),
+            ...(sourceMetadata?.provider === 'dataset_revision'
+              ? {
+                  dataset_revision: {
+                    record_type: sourceMetadata.recordType,
+                    schema_version: sourceMetadata.schemaVersion,
+                    canonical_hash: sourceMetadata.canonicalHash,
+                    dataset_name: sourceMetadata.datasetName,
+                    previous_dataset_version: sourceMetadata.previousDatasetVersion,
+                    next_dataset_version: sourceMetadata.nextDatasetVersion,
+                    previous_dataset_root_hash: sourceMetadata.previousDatasetRootHash,
+                    next_dataset_root_hash: sourceMetadata.nextDatasetRootHash,
+                    revision_root_hash: sourceMetadata.revisionRootHash,
+                    new_file_count: sourceMetadata.newFileCount,
+                    changed_file_count: sourceMetadata.changedFileCount,
+                    removed_file_count: sourceMetadata.removedFileCount,
+                    unchanged_file_count: sourceMetadata.unchangedFileCount,
+                  },
+                }
+              : {}),
           },
         },
         ...(complianceSha256
@@ -2049,6 +2179,9 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
           ...(sourceMetadata?.provider === 'model_release' ? { model_release_record_count: 1 } : {}),
           ...(sourceMetadata?.provider === 'dataset_inventory'
             ? { dataset_inventory_record_count: 1 }
+            : {}),
+          ...(sourceMetadata?.provider === 'dataset_revision'
+            ? { dataset_revision_record_count: 1 }
             : {}),
         },
       });

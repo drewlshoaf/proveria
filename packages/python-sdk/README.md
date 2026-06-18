@@ -159,6 +159,45 @@ dataset_inventory = client.attestations.create_dataset_inventory(
 print(dataset_inventory["data"]["id"])
 ```
 
+Use `create_dataset_revision` when you have a canonical revision record produced
+from two inventory records.
+
+```python
+dataset_revision_record = {
+    "record_type": "dataset_revision_record",
+    "schema_version": "0.1",
+    "dataset": {
+        "name": "Training Dataset",
+        "previous_version": "2026.05",
+        "next_version": "2026.06",
+    },
+    "summary": {
+        "new_file_count": 1,
+        "changed_file_count": 0,
+        "removed_file_count": 0,
+        "unchanged_file_count": 12,
+        "previous_dataset_root_hash": "a" * 64,
+        "next_dataset_root_hash": "b" * 64,
+        "revision_root_hash": "c" * 64,
+        "hash_algorithm": "sha256",
+    },
+    "changes": {
+        "new": [{"path": "train/new.jsonl", "sha256": "d" * 64, "byte_size": 1024}],
+        "changed": [],
+        "removed": [],
+        "unchanged": [],
+    },
+}
+
+dataset_revision = client.attestations.create_dataset_revision(
+    project="evaluation-evidence",
+    record=dataset_revision_record,
+    idempotency_key="dataset-revision-2026-05-2026-06",
+)
+
+print(dataset_revision["data"]["id"])
+```
+
 ## Model Release Receipts
 
 Use `create_model_release` when you have a claim-backed model provenance record

@@ -131,6 +131,45 @@ const datasetInventory = await proveria.attestations.createDatasetInventory({
 console.log(datasetInventory.data.id);
 ```
 
+Use `createDatasetRevision` when you have a canonical revision record produced
+from two inventory records.
+
+```ts
+const datasetRevisionRecord = {
+  record_type: 'dataset_revision_record',
+  schema_version: '0.1',
+  dataset: {
+    name: 'Training Dataset',
+    previous_version: '2026.05',
+    next_version: '2026.06',
+  },
+  summary: {
+    new_file_count: 1,
+    changed_file_count: 0,
+    removed_file_count: 0,
+    unchanged_file_count: 12,
+    previous_dataset_root_hash: 'a'.repeat(64),
+    next_dataset_root_hash: 'b'.repeat(64),
+    revision_root_hash: 'c'.repeat(64),
+    hash_algorithm: 'sha256',
+  },
+  changes: {
+    new: [{ path: 'train/new.jsonl', sha256: 'd'.repeat(64), byte_size: 1024 }],
+    changed: [],
+    removed: [],
+    unchanged: [],
+  },
+};
+
+const datasetRevision = await proveria.attestations.createDatasetRevision({
+  project: 'evaluation-evidence',
+  record: datasetRevisionRecord,
+  idempotencyKey: 'dataset-revision-2026-05-2026-06',
+});
+
+console.log(datasetRevision.data.id);
+```
+
 ## Model Release Receipts
 
 Use `createModelRelease` when you have a claim-backed model provenance record

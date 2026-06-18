@@ -212,6 +212,32 @@ The final receipt covers the canonical inventory hash, dataset root hash, file
 count, total bytes, and classification metadata. It does not upload raw dataset
 files.
 
+## Create A Dataset Revision Receipt
+
+Use `proveria dataset revision` to compare two inventory records and produce a
+`dataset_revision_record`.
+
+```bash
+proveria dataset revision \
+  --base ./dataset-2026.05.json \
+  --next ./dataset-2026.06.json \
+  --output ./dataset-revision.json
+```
+
+Inspect and submit the revision record:
+
+```bash
+proveria dataset inspect ./dataset-revision.json
+
+proveria dataset attest ./dataset-revision.json \
+  --project evaluation-evidence \
+  --name "Training Dataset 2026.05 to 2026.06 revision"
+```
+
+The revision record reports new, changed, removed, and unchanged paths. The
+public API receives the canonical revision hash and summary metadata, not raw
+dataset bytes.
+
 ## Create A Model Release Receipt
 
 Use this path for API-first model governance workflows. The starter file is a

@@ -1032,6 +1032,114 @@ describe('public V1 response contract', () => {
     });
   });
 
+  it('accepts a dataset revision record hash through the public API', async () => {
+    const owner = await registerOwner();
+    const writeToken = await createApiKey(owner, ['read', 'write']);
+    const projectRes = await app.inject({
+      method: 'POST',
+      url: `/v1/tenants/${owner.tenant.slug}/projects`,
+      headers: {
+        authorization: `Bearer ${writeToken}`,
+        'idempotency-key': 'dataset-revision-project',
+      },
+      payload: {
+        slug: 'dataset-revision-project',
+        name: 'Dataset Revision Project',
+      },
+    });
+    expect(projectRes.statusCode).toBe(201);
+
+    const hash = 'c'.repeat(64);
+    const previousDatasetRootHash = 'd'.repeat(64);
+    const nextDatasetRootHash = 'e'.repeat(64);
+    const revisionRootHash = 'f'.repeat(64);
+    const payload = {
+      label: 'graduation-dataset-revision',
+      sha256: hash,
+      fileName: 'dataset-revision.json',
+      byteSize: 4096,
+      sourceMetadata: {
+        provider: 'dataset_revision',
+        recordType: 'dataset_revision_record',
+        schemaVersion: '0.1',
+        canonicalHash: hash,
+        datasetName: 'Graduation Training Dataset',
+        previousDatasetVersion: '2026.05',
+        nextDatasetVersion: '2026.06',
+        previousDatasetRootHash,
+        nextDatasetRootHash,
+        revisionRootHash,
+        newFileCount: 3,
+        changedFileCount: 2,
+        removedFileCount: 1,
+        unchangedFileCount: 10,
+      },
+    };
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/v1/tenants/${owner.tenant.slug}/projects/dataset-revision-project/attestations`,
+      headers: {
+        authorization: `Bearer ${writeToken}`,
+        'idempotency-key': 'dataset-revision-1',
+      },
+      payload,
+    });
+    expect(created.statusCode).toBe(202);
+    const body = created.json() as { data: { id: string; state: string } };
+    expect(body.data.state).toBe('validating');
+
+    const attempts = await dbHandle.sql<
+      { source_metadata: Record<string, unknown> }[]
+    >`
+      SELECT sa.source_metadata
+      FROM public.submission_attempts sa
+      INNER JOIN public.attestations a ON a.id = sa.attestation_id
+      WHERE a.id = ${body.data.id}`;
+    expect(attempts[0]!.source_metadata).toEqual(
+      expect.objectContaining({
+        provider: 'dataset_revision',
+        recordType: 'dataset_revision_record',
+        canonicalHash: hash,
+        datasetName: 'Graduation Training Dataset',
+        previousDatasetVersion: '2026.05',
+        nextDatasetVersion: '2026.06',
+        revisionRootHash,
+        newFileCount: 3,
+        changedFileCount: 2,
+        removedFileCount: 1,
+        unchangedFileCount: 10,
+        createdByUserId: owner.user.id,
+      }),
+    );
+
+    const manifest = JSON.parse([...storedObjects.values()][0]!) as {
+      source_summary: { dataset_revision_record_count?: number };
+      policy_context: { source_provider?: string };
+      leaf_set: Array<{
+        canonical_payload_hash: string;
+        metadata: Record<string, unknown>;
+      }>;
+    };
+    expect(manifest.source_summary.dataset_revision_record_count).toBe(1);
+    expect(manifest.policy_context.source_provider).toBe('dataset_revision');
+    expect(manifest.leaf_set[0]).toMatchObject({
+      canonical_payload_hash: hash,
+      metadata: {
+        source: 'dataset_revision',
+        file_name: 'dataset-revision.json',
+        dataset_revision: expect.objectContaining({
+          record_type: 'dataset_revision_record',
+          canonical_hash: hash,
+          dataset_name: 'Graduation Training Dataset',
+          previous_dataset_root_hash: previousDatasetRootHash,
+          next_dataset_root_hash: nextDatasetRootHash,
+          revision_root_hash: revisionRootHash,
+        }),
+      },
+    });
+  });
+
   it('verifies a hash through the public API and issues a result link', async () => {
     const owner = await registerOwner();
     const writeToken = await createApiKey(owner, ['read', 'write']);

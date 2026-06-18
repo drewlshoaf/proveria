@@ -189,7 +189,8 @@ export interface CreateHashAttestationInput {
 
 export type AttestationSourceMetadata =
   | ModelReleaseSourceMetadata
-  | DatasetInventorySourceMetadata;
+  | DatasetInventorySourceMetadata
+  | DatasetRevisionSourceMetadata;
 
 export interface ModelReleaseSourceMetadata {
   provider: 'model_release';
@@ -248,6 +249,31 @@ export interface DatasetInventorySourceMetadata {
 }
 
 export interface CreateDatasetInventoryAttestationInput {
+  project: string;
+  record: Record<string, unknown>;
+  label?: string;
+  fileName?: string;
+  idempotencyKey?: string;
+}
+
+export interface DatasetRevisionSourceMetadata {
+  provider: 'dataset_revision';
+  recordType: 'dataset_revision_record';
+  schemaVersion: string;
+  canonicalHash: string;
+  datasetName: string;
+  previousDatasetVersion: string;
+  nextDatasetVersion: string;
+  previousDatasetRootHash: string;
+  nextDatasetRootHash: string;
+  revisionRootHash: string;
+  newFileCount: number;
+  changedFileCount: number;
+  removedFileCount: number;
+  unchangedFileCount: number;
+}
+
+export interface CreateDatasetRevisionAttestationInput {
   project: string;
   record: Record<string, unknown>;
   label?: string;

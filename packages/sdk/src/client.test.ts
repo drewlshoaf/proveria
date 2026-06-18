@@ -79,6 +79,40 @@ const sampleDatasetInventoryRecord = (): Record<string, unknown> => ({
   ],
 });
 
+const sampleDatasetRevisionRecord = (): Record<string, unknown> => ({
+  record_type: 'dataset_revision_record',
+  schema_version: '0.1',
+  dataset: {
+    name: 'Training Dataset',
+    previous_version: '2026.05',
+    next_version: '2026.06',
+  },
+  summary: {
+    new_file_count: 1,
+    changed_file_count: 1,
+    removed_file_count: 1,
+    unchanged_file_count: 2,
+    previous_dataset_root_hash: 'a'.repeat(64),
+    next_dataset_root_hash: 'b'.repeat(64),
+    revision_root_hash: 'c'.repeat(64),
+    hash_algorithm: 'sha256',
+  },
+  changes: {
+    new: [{ path: 'train/new.jsonl', sha256: 'd'.repeat(64), byte_size: 120 }],
+    changed: [
+      {
+        path: 'train/changed.jsonl',
+        previous_sha256: 'e'.repeat(64),
+        next_sha256: 'f'.repeat(64),
+        previous_byte_size: 100,
+        next_byte_size: 140,
+      },
+    ],
+    removed: [{ path: 'train/removed.jsonl', sha256: '1'.repeat(64), byte_size: 80 }],
+    unchanged: [{ path: 'eval/stable.jsonl', sha256: '2'.repeat(64), byte_size: 64 }],
+  },
+});
+
 describe('ProveriaClient', () => {
   it('fetches public API docs without credentials', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
@@ -431,6 +465,61 @@ describe('ProveriaClient', () => {
         dataClassification: 'confidential',
         sourceOwner: 'Data Governance',
         retentionRule: '7 years',
+      },
+    });
+    expect(body.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(body.sourceMetadata.canonicalHash).toBe(body.sha256);
+  });
+
+  it('creates dataset revision attestations with canonical source metadata', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = new ProveriaClient({
+      apiKey: 'prv_v1_test',
+      tenant: 'evaluation-workspace',
+      apiUrl: 'http://api.test',
+      fetch: async (url: string | URL | Request, init?: RequestInit) => {
+        calls.push({ url: String(url), init });
+        return jsonResponse({
+          data: { id: 'att_revision', state: 'validating' },
+          meta: { requestId: 'req_revision' },
+        });
+      },
+    });
+
+    await client.attestations.createDatasetRevision({
+      project: 'datasets',
+      record: sampleDatasetRevisionRecord(),
+      idempotencyKey: 'dataset_revision_1',
+    });
+
+    expect(calls[0]?.url).toBe(
+      'http://api.test/v1/tenants/evaluation-workspace/projects/datasets/attestations',
+    );
+    expect(calls[0]?.init?.headers).toMatchObject({
+      'idempotency-key': 'dataset_revision_1',
+    });
+    const body = JSON.parse(String(calls[0]?.init?.body)) as {
+      label: string;
+      sha256: string;
+      fileName: string;
+      sourceMetadata: Record<string, unknown>;
+    };
+    expect(body).toMatchObject({
+      label: 'Training Dataset 2026.05 to 2026.06 revision',
+      fileName: 'dataset-revision.json',
+      sourceMetadata: {
+        provider: 'dataset_revision',
+        recordType: 'dataset_revision_record',
+        datasetName: 'Training Dataset',
+        previousDatasetVersion: '2026.05',
+        nextDatasetVersion: '2026.06',
+        previousDatasetRootHash: 'a'.repeat(64),
+        nextDatasetRootHash: 'b'.repeat(64),
+        revisionRootHash: 'c'.repeat(64),
+        newFileCount: 1,
+        changedFileCount: 1,
+        removedFileCount: 1,
+        unchangedFileCount: 2,
       },
     });
     expect(body.sha256).toMatch(/^[0-9a-f]{64}$/);
