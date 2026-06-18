@@ -266,6 +266,11 @@ record, extracts the model release claim metadata, and sends only hash metadata
 to the public API. The model release JSON body stays local unless you separately
 store it in your own evidence repository.
 
+For model cards, attach the release receipt, dataset receipts, evaluation
+hashes, policy decision, and audit packages using
+`docs/v6-model-card-provenance-attachment.md`. A starter attachment is available
+at `docs/examples/model-card-provenance-attachment.json`.
+
 ## Compliance Receipt QA Flow
 
 Use this sequence when testing the CLI compliance workflow end to end. It keeps

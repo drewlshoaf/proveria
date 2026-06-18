@@ -164,6 +164,10 @@ proveria model-release init --output ./model-release.json
 proveria model-release attest ./model-release.json --project evaluation-evidence
 ```
 
+To attach the resulting release receipt to a model card, use
+`docs/v6-model-card-provenance-attachment.md` and the starter JSON at
+`docs/examples/model-card-provenance-attachment.json`.
+
 ## Create A Dataset Inventory Attestation
 
 For dataset inventory provenance, hash the dataset locally and submit the
