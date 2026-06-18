@@ -65,6 +65,8 @@ enum Command {
     Events(EventsCommand),
     /// Export evidence, receipts, and verification artifacts.
     Export(ExportCommand),
+    /// Create and submit dataset inventory provenance receipts.
+    Dataset(DatasetCommand),
     /// Compute a local SHA-256 hash.
     Hash(HashCommand),
     /// Create and submit model release provenance receipts.
@@ -460,6 +462,84 @@ struct ExportCreate {
 struct HashCommand {
     #[arg(value_name = "FILE")]
     file: PathBuf,
+
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    output: OutputFormat,
+}
+
+#[derive(Args)]
+struct DatasetCommand {
+    #[command(subcommand)]
+    command: DatasetSubcommand,
+}
+
+#[derive(Subcommand)]
+enum DatasetSubcommand {
+    /// Write a starter dataset inventory record JSON file.
+    Init(DatasetInit),
+    /// Hash a local folder into a dataset inventory record.
+    Collect(DatasetCollect),
+    /// Inspect the canonical hash and API metadata for a dataset inventory record.
+    Inspect(DatasetInspect),
+    /// Canonicalize, hash, and attest a dataset inventory record.
+    Attest(DatasetAttest),
+}
+
+#[derive(Args)]
+struct DatasetInit {
+    #[arg(long, value_name = "FILE")]
+    output: PathBuf,
+}
+
+#[derive(Args)]
+struct DatasetCollect {
+    #[arg(value_name = "DIR")]
+    input: PathBuf,
+
+    #[arg(long, value_name = "FILE")]
+    output: PathBuf,
+
+    #[arg(long)]
+    name: String,
+
+    #[arg(long)]
+    version: String,
+
+    #[arg(long, default_value = "folder")]
+    scope: String,
+
+    #[arg(long, default_value = "internal")]
+    classification: String,
+
+    #[arg(long)]
+    source_owner: Option<String>,
+
+    #[arg(long)]
+    license_usage_basis: Option<String>,
+
+    #[arg(long)]
+    retention_rule: Option<String>,
+}
+
+#[derive(Args)]
+struct DatasetInspect {
+    #[arg(value_name = "DATASET_INVENTORY_JSON")]
+    file: PathBuf,
+
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    output: OutputFormat,
+}
+
+#[derive(Args)]
+struct DatasetAttest {
+    #[arg(value_name = "DATASET_INVENTORY_JSON")]
+    file: PathBuf,
+
+    #[arg(long)]
+    project: String,
+
+    #[arg(long, alias = "label")]
+    name: Option<String>,
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
     output: OutputFormat,
@@ -1252,6 +1332,7 @@ async fn main() -> Result<()> {
         Command::Attestations(command) => run_attestations(ctx, command).await,
         Command::Completions(command) => run_completions(command),
         Command::Config(command) => run_config(command).await,
+        Command::Dataset(command) => run_dataset(ctx, command).await,
         Command::Events(command) => run_events(ctx, command).await,
         Command::Export(command) => run_export(ctx, command).await,
         Command::Hash(command) => run_hash(command),
@@ -2396,6 +2477,312 @@ fn print_attestation_record(attestation: &Attestation) {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct DatasetInventorySourceMetadata {
+    provider: &'static str,
+    record_type: String,
+    schema_version: String,
+    canonical_hash: String,
+    dataset_name: String,
+    dataset_version: String,
+    inventory_scope: String,
+    file_count: u64,
+    total_bytes: u64,
+    dataset_root_hash: String,
+    data_classification: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_owner: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    license_usage_basis: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    retention_rule: Option<String>,
+}
+
+#[derive(Debug)]
+struct DatasetInventoryRecordPackage {
+    canonical_json: String,
+    canonical_hash: String,
+    metadata: DatasetInventorySourceMetadata,
+}
+
+async fn run_dataset(ctx: AppContext, command: DatasetCommand) -> Result<()> {
+    match command.command {
+        DatasetSubcommand::Init(input) => run_dataset_init(input),
+        DatasetSubcommand::Collect(input) => run_dataset_collect(input),
+        DatasetSubcommand::Inspect(input) => run_dataset_inspect(input),
+        DatasetSubcommand::Attest(input) => run_dataset_attest(ctx, input).await,
+    }
+}
+
+fn run_dataset_init(input: DatasetInit) -> Result<()> {
+    if input.output.exists() {
+        bail!(
+            "{} already exists. Remove it or choose a different --output path.",
+            input.output.display()
+        );
+    }
+    let template = dataset_inventory_template();
+    let body = serde_json::to_string_pretty(&template)?;
+    fs::write(&input.output, format!("{body}\n"))
+        .with_context(|| format!("could not write {}", input.output.display()))?;
+    println!("Wrote {}", input.output.display());
+    println!("Edit the dataset inventory details, then run:");
+    println!(
+        "proveria dataset attest {} --project <project-slug>",
+        input.output.display()
+    );
+    Ok(())
+}
+
+fn run_dataset_collect(input: DatasetCollect) -> Result<()> {
+    if input.output.exists() {
+        bail!(
+            "{} already exists. Remove it or choose a different --output path.",
+            input.output.display()
+        );
+    }
+    let record = collect_dataset_inventory(&input)?;
+    let body = serde_json::to_string_pretty(&record)?;
+    fs::write(&input.output, format!("{body}\n"))
+        .with_context(|| format!("could not write {}", input.output.display()))?;
+    let package = dataset_inventory_package(&record)?;
+    println!("Wrote {}", input.output.display());
+    println!("files: {}", package.metadata.file_count);
+    println!("total_bytes: {}", package.metadata.total_bytes);
+    println!("dataset_root_hash: {}", package.metadata.dataset_root_hash);
+    println!("canonical_hash: {}", package.canonical_hash);
+    Ok(())
+}
+
+fn run_dataset_inspect(input: DatasetInspect) -> Result<()> {
+    let package = read_dataset_inventory_record(&input.file)?;
+    match input.output {
+        OutputFormat::Text => {
+            println!("record_type: {}", package.metadata.record_type);
+            println!("schema_version: {}", package.metadata.schema_version);
+            println!(
+                "dataset: {} {}",
+                package.metadata.dataset_name, package.metadata.dataset_version
+            );
+            println!("files: {}", package.metadata.file_count);
+            println!("total_bytes: {}", package.metadata.total_bytes);
+            println!("dataset_root_hash: {}", package.metadata.dataset_root_hash);
+            println!("canonical_hash: {}", package.canonical_hash);
+            println!("canonical_bytes: {}", package.canonical_json.len());
+        }
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "canonicalHash": package.canonical_hash,
+                    "canonicalBytes": package.canonical_json.len(),
+                    "sourceMetadata": package.metadata,
+                }))?
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn run_dataset_attest(ctx: AppContext, input: DatasetAttest) -> Result<()> {
+    let workspace = require_workspace(&ctx)?;
+    let package = read_dataset_inventory_record(&input.file)?;
+    let file_name = input
+        .file
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("dataset inventory file name is not valid UTF-8"))?
+        .to_string();
+    let label = input.name.unwrap_or_else(|| {
+        format!(
+            "{} {} inventory",
+            package.metadata.dataset_name, package.metadata.dataset_version
+        )
+    });
+
+    let mut body = serde_json::Map::new();
+    body.insert("label".to_string(), json!(label));
+    body.insert("sha256".to_string(), json!(package.canonical_hash));
+    body.insert("fileName".to_string(), json!(file_name));
+    body.insert(
+        "byteSize".to_string(),
+        json!(package.canonical_json.len() as u64),
+    );
+    body.insert(
+        "sourceMetadata".to_string(),
+        serde_json::to_value(&package.metadata)?,
+    );
+
+    let idempotency_key = attestation_idempotency_key(
+        workspace,
+        &input.project,
+        body.get("label")
+            .and_then(|value| value.as_str())
+            .unwrap_or("dataset-inventory"),
+        body.get("fileName")
+            .and_then(|value| value.as_str())
+            .unwrap_or("dataset-inventory.json"),
+        body.get("sha256")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default(),
+        None,
+    );
+    let response = api_post::<CreateAttestationResponse>(
+        &ctx,
+        &format!(
+            "/v1/tenants/{workspace}/projects/{}/attestations",
+            input.project
+        ),
+        serde_json::Value::Object(body),
+        Some(idempotency_key),
+    )
+    .await?;
+    match input.output {
+        OutputFormat::Text => {
+            println!("Submitted dataset inventory receipt");
+            println!("canonical_hash: {}", package.canonical_hash);
+            println!("{}", serde_json::to_string_pretty(&response.data)?);
+        }
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&response)?),
+    }
+    Ok(())
+}
+
+fn read_dataset_inventory_record(path: &Path) -> Result<DatasetInventoryRecordPackage> {
+    let text =
+        fs::read_to_string(path).with_context(|| format!("could not read {}", path.display()))?;
+    let parsed: serde_json::Value = serde_json::from_str(&text)
+        .with_context(|| format!("could not parse {}", path.display()))?;
+    if !parsed.is_object() {
+        bail!("dataset inventory record must be a JSON object");
+    }
+    dataset_inventory_package(&parsed)
+}
+
+fn dataset_inventory_package(record: &serde_json::Value) -> Result<DatasetInventoryRecordPackage> {
+    let canonical = canonical_json(record);
+    let canonical_hash = hex::encode(Sha256::digest(canonical.as_bytes()));
+    let metadata = dataset_inventory_metadata(record, canonical_hash.clone())?;
+    Ok(DatasetInventoryRecordPackage {
+        canonical_json: canonical,
+        canonical_hash,
+        metadata,
+    })
+}
+
+fn dataset_inventory_metadata(
+    record: &serde_json::Value,
+    canonical_hash: String,
+) -> Result<DatasetInventorySourceMetadata> {
+    let record_type = required_string(record, &["record_type"])?;
+    if record_type != "dataset_inventory_record" {
+        bail!("record_type must be dataset_inventory_record");
+    }
+    Ok(DatasetInventorySourceMetadata {
+        provider: "dataset_inventory",
+        record_type,
+        schema_version: required_string(record, &["schema_version"])?,
+        canonical_hash,
+        dataset_name: required_string(record, &["dataset", "name"])?,
+        dataset_version: required_string(record, &["dataset", "version"])?,
+        inventory_scope: required_string(record, &["dataset", "inventory_scope"])?,
+        file_count: required_u64(record, &["summary", "file_count"])?,
+        total_bytes: required_u64(record, &["summary", "total_bytes"])?,
+        dataset_root_hash: required_sha256(record, &["summary", "dataset_root_hash"])?,
+        data_classification: required_string(record, &["dataset", "data_classification"])?,
+        source_owner: optional_string(record, &["dataset", "source_owner"])?,
+        license_usage_basis: optional_string(record, &["dataset", "license_usage_basis"])?,
+        retention_rule: optional_string(record, &["dataset", "retention_rule"])?,
+    })
+}
+
+fn collect_dataset_inventory(input: &DatasetCollect) -> Result<serde_json::Value> {
+    if !input.input.is_dir() {
+        bail!("{} is not a directory", input.input.display());
+    }
+    let mut files = Vec::new();
+    collect_dataset_files(&input.input, &input.input, &mut files)?;
+    files.sort_by(|a, b| {
+        a.get("path")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .cmp(
+                b.get("path")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default(),
+            )
+    });
+    let file_count = files.len() as u64;
+    let total_bytes = files
+        .iter()
+        .filter_map(|file| file.get("byte_size").and_then(|value| value.as_u64()))
+        .sum::<u64>();
+    let dataset_root_hash = hex::encode(Sha256::digest(canonical_json(&json!(files)).as_bytes()));
+    Ok(json!({
+        "record_type": "dataset_inventory_record",
+        "schema_version": "0.1",
+        "dataset": {
+            "name": input.name,
+            "version": input.version,
+            "description": "",
+            "inventory_scope": input.scope,
+            "source_owner": input.source_owner.clone().unwrap_or_default(),
+            "license_usage_basis": input.license_usage_basis.clone().unwrap_or_default(),
+            "data_classification": input.classification,
+            "retention_rule": input.retention_rule.clone().unwrap_or_default(),
+        },
+        "summary": {
+            "file_count": file_count,
+            "total_bytes": total_bytes,
+            "dataset_root_hash": dataset_root_hash,
+            "hash_algorithm": "sha256",
+        },
+        "files": files,
+        "privacy": {
+            "raw_files_uploaded_to_proveria": false,
+            "stored_by_proveria": ["canonical inventory hash", "file hashes", "file paths in inventory record if submitted separately"],
+            "local_only": ["raw dataset file bytes"]
+        }
+    }))
+}
+
+fn collect_dataset_files(
+    root: &Path,
+    dir: &Path,
+    files: &mut Vec<serde_json::Value>,
+) -> Result<()> {
+    for entry in fs::read_dir(dir).with_context(|| format!("could not read {}", dir.display()))? {
+        let entry = entry.with_context(|| format!("could not read entry in {}", dir.display()))?;
+        let path = entry.path();
+        let metadata =
+            fs::metadata(&path).with_context(|| format!("could not stat {}", path.display()))?;
+        if metadata.is_dir() {
+            collect_dataset_files(root, &path, files)?;
+        } else if metadata.is_file() {
+            let relative = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .components()
+                .map(|component| component.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
+            files.push(json!({
+                "path": relative,
+                "sha256": sha256_file(&path)?,
+                "byte_size": metadata.len(),
+            }));
+        }
+    }
+    Ok(())
+}
+
+fn required_u64(record: &serde_json::Value, path: &[&str]) -> Result<u64> {
+    value_at_path(record, path)
+        .and_then(|value| value.as_u64())
+        .ok_or_else(|| anyhow!("missing required unsigned integer field {}", path.join(".")))
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ModelReleaseSourceMetadata {
     provider: &'static str,
     record_type: String,
@@ -3516,6 +3903,54 @@ fn compliance_json_metadata(path: &Path) -> Result<ComplianceJsonMetadata> {
         byte_size: canonical.len() as u64,
         media_type: "application/json",
         canonicalization: "json-stable-v1",
+    })
+}
+
+fn dataset_inventory_template() -> serde_json::Value {
+    let files = vec![
+        json!({
+            "path": "train/example-001.jsonl",
+            "sha256": sample_hash("dataset-file-1"),
+            "byte_size": 1024,
+            "media_type": "application/jsonl"
+        }),
+        json!({
+            "path": "eval/example-001.jsonl",
+            "sha256": sample_hash("dataset-file-2"),
+            "byte_size": 512,
+            "media_type": "application/jsonl"
+        }),
+    ];
+    let dataset_root_hash = hex::encode(Sha256::digest(canonical_json(&json!(files)).as_bytes()));
+    json!({
+        "record_type": "dataset_inventory_record",
+        "schema_version": "0.1",
+        "dataset": {
+            "name": "Graduation Training Dataset",
+            "version": "2026.06",
+            "description": "Dataset inventory for approved model training and evaluation.",
+            "inventory_scope": "folder",
+            "source_owner": "Data Governance",
+            "license_usage_basis": "Internal governed dataset approval.",
+            "data_classification": "confidential",
+            "retention_rule": "7 years"
+        },
+        "summary": {
+            "file_count": files.len(),
+            "total_bytes": 1536,
+            "dataset_root_hash": dataset_root_hash,
+            "hash_algorithm": "sha256"
+        },
+        "files": files,
+        "privacy": {
+            "raw_files_uploaded_to_proveria": false,
+            "stored_by_proveria": [
+                "canonical inventory hash",
+                "file hashes",
+                "file paths if this inventory record is stored in your evidence repository"
+            ],
+            "local_only": ["raw dataset file bytes"]
+        }
     })
 }
 
@@ -4792,6 +5227,68 @@ mod tests {
         assert_eq!(metadata.canonicalization, "json-stable-v1");
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn dataset_inventory_template_extracts_api_metadata() {
+        let template = dataset_inventory_template();
+        let canonical = canonical_json(&template);
+        let canonical_hash = hex::encode(Sha256::digest(canonical.as_bytes()));
+
+        let metadata =
+            dataset_inventory_metadata(&template, canonical_hash.clone()).expect("builds metadata");
+
+        assert_eq!(metadata.provider, "dataset_inventory");
+        assert_eq!(metadata.record_type, "dataset_inventory_record");
+        assert_eq!(metadata.schema_version, "0.1");
+        assert_eq!(metadata.canonical_hash, canonical_hash);
+        assert_eq!(metadata.dataset_name, "Graduation Training Dataset");
+        assert_eq!(metadata.dataset_version, "2026.06");
+        assert_eq!(metadata.file_count, 2);
+        assert_eq!(metadata.total_bytes, 1536);
+        assert_eq!(metadata.data_classification, "confidential");
+        assert_eq!(metadata.retention_rule.as_deref(), Some("7 years"));
+    }
+
+    #[test]
+    fn collects_dataset_inventory_from_folder() {
+        let root =
+            std::env::temp_dir().join(format!("proveria-dataset-collect-{}", std::process::id()));
+        let nested = root.join("nested");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&nested).expect("creates fixture dir");
+        fs::write(root.join("a.txt"), b"alpha").expect("writes a");
+        fs::write(nested.join("b.txt"), b"bravo").expect("writes b");
+
+        let record = collect_dataset_inventory(&DatasetCollect {
+            input: root.clone(),
+            output: root.join("inventory.json"),
+            name: "Fixture Dataset".to_string(),
+            version: "v1".to_string(),
+            scope: "folder".to_string(),
+            classification: "internal".to_string(),
+            source_owner: Some("Data Team".to_string()),
+            license_usage_basis: None,
+            retention_rule: Some("1 year".to_string()),
+        })
+        .expect("collects inventory");
+        let metadata = dataset_inventory_package(&record)
+            .expect("packages inventory")
+            .metadata;
+
+        assert_eq!(metadata.file_count, 2);
+        assert_eq!(metadata.total_bytes, 10);
+        assert_eq!(metadata.dataset_name, "Fixture Dataset");
+        assert_eq!(metadata.source_owner.as_deref(), Some("Data Team"));
+        assert_eq!(metadata.retention_rule.as_deref(), Some("1 year"));
+        assert!(
+            record["files"].as_array().unwrap()[0]["path"]
+                .as_str()
+                .unwrap()
+                == "a.txt"
+        );
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

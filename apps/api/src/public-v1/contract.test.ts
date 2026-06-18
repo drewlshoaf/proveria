@@ -931,6 +931,107 @@ describe('public V1 response contract', () => {
     });
   });
 
+  it('accepts a dataset inventory record hash through the public API', async () => {
+    const owner = await registerOwner();
+    const writeToken = await createApiKey(owner, ['read', 'write']);
+    const projectRes = await app.inject({
+      method: 'POST',
+      url: `/v1/tenants/${owner.tenant.slug}/projects`,
+      headers: {
+        authorization: `Bearer ${writeToken}`,
+        'idempotency-key': 'dataset-inventory-project',
+      },
+      payload: {
+        slug: 'dataset-inventory-project',
+        name: 'Dataset Inventory Project',
+      },
+    });
+    expect(projectRes.statusCode).toBe(201);
+
+    const hash = 'a'.repeat(64);
+    const datasetRootHash = 'b'.repeat(64);
+    const payload = {
+      label: 'graduation-dataset-inventory',
+      sha256: hash,
+      fileName: 'dataset-inventory.json',
+      byteSize: 2048,
+      sourceMetadata: {
+        provider: 'dataset_inventory',
+        recordType: 'dataset_inventory_record',
+        schemaVersion: '0.1',
+        canonicalHash: hash,
+        datasetName: 'Graduation Training Dataset',
+        datasetVersion: '2026.06',
+        inventoryScope: 'folder',
+        fileCount: 2,
+        totalBytes: 1536,
+        datasetRootHash,
+        dataClassification: 'confidential',
+        sourceOwner: 'Data Governance',
+        licenseUsageBasis: 'Internal governed dataset approval.',
+        retentionRule: '7 years',
+      },
+    };
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/v1/tenants/${owner.tenant.slug}/projects/dataset-inventory-project/attestations`,
+      headers: {
+        authorization: `Bearer ${writeToken}`,
+        'idempotency-key': 'dataset-inventory-1',
+      },
+      payload,
+    });
+    expect(created.statusCode).toBe(202);
+    const body = created.json() as { data: { id: string; state: string } };
+    expect(body.data.state).toBe('validating');
+
+    const attempts = await dbHandle.sql<
+      { source_metadata: Record<string, unknown> }[]
+    >`
+      SELECT sa.source_metadata
+      FROM public.submission_attempts sa
+      INNER JOIN public.attestations a ON a.id = sa.attestation_id
+      WHERE a.id = ${body.data.id}`;
+    expect(attempts[0]!.source_metadata).toEqual(
+      expect.objectContaining({
+        provider: 'dataset_inventory',
+        recordType: 'dataset_inventory_record',
+        canonicalHash: hash,
+        datasetName: 'Graduation Training Dataset',
+        datasetVersion: '2026.06',
+        fileCount: 2,
+        totalBytes: 1536,
+        datasetRootHash,
+        createdByUserId: owner.user.id,
+      }),
+    );
+
+    const manifest = JSON.parse([...storedObjects.values()][0]!) as {
+      source_summary: { dataset_inventory_record_count?: number };
+      policy_context: { source_provider?: string };
+      leaf_set: Array<{
+        canonical_payload_hash: string;
+        metadata: Record<string, unknown>;
+      }>;
+    };
+    expect(manifest.source_summary.dataset_inventory_record_count).toBe(1);
+    expect(manifest.policy_context.source_provider).toBe('dataset_inventory');
+    expect(manifest.leaf_set[0]).toMatchObject({
+      canonical_payload_hash: hash,
+      metadata: {
+        source: 'dataset_inventory',
+        file_name: 'dataset-inventory.json',
+        dataset_inventory: expect.objectContaining({
+          record_type: 'dataset_inventory_record',
+          canonical_hash: hash,
+          dataset_name: 'Graduation Training Dataset',
+          dataset_root_hash: datasetRootHash,
+        }),
+      },
+    });
+  });
+
   it('verifies a hash through the public API and issues a result link', async () => {
     const owner = await registerOwner();
     const writeToken = await createApiKey(owner, ['read', 'write']);

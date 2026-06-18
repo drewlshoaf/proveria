@@ -44,7 +44,7 @@ AI dataset provenance as the flagship use case.
 - [ ] Quickstart exists for verifier lookup integration.
 - [*] Quickstart exists for webhook receiver integration.
 - [ ] Quickstart exists for evidence export and package verification.
-- [ ] Quickstart exists for AI dataset provenance.
+- [*] Quickstart exists for AI dataset provenance.
 - [ ] Sandbox tenant mode or deterministic seeded examples are available.
 - [ ] Postman or Insomnia collection exists for core workflows.
 - [ ] curl, TypeScript, Python, and CLI examples are aligned with the live API.
@@ -101,20 +101,20 @@ AI dataset provenance as the flagship use case.
 
 ## AI Dataset Provenance
 
-- [ ] Dataset provenance product model is documented.
-- [ ] Minimum dataset manifest format is accepted.
-- [ ] Dataset inventory attestation workflow is implemented.
+- [*] Dataset provenance product model is documented.
+- [*] Minimum dataset manifest format is accepted.
+- [*] Dataset inventory attestation workflow is implemented.
 - [ ] Dataset revision receipt workflow distinguishes new, changed, removed,
       and unchanged files or records.
 - [ ] Licensed-content audit package example exists.
 - [ ] Model-card provenance attachment example exists.
 - [ ] Python example creates a dataset inventory attestation.
 - [ ] Python example creates or verifies a dataset revision receipt.
-- [ ] CLI example creates a dataset inventory package.
+- [*] CLI example creates a dataset inventory package.
 - [ ] Evidence export package can be generated for a dataset workflow.
 - [ ] Sample file or passage verification against a dataset record is
       documented and tested.
-- [ ] Privacy language clearly states what is hashed locally, submitted,
+- [*] Privacy language clearly states what is hashed locally, submitted,
       stored, exported, and never stored.
 
 ## Regression
