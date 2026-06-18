@@ -104,7 +104,7 @@ AI dataset provenance as the flagship use case.
 - [*] Dataset provenance product model is documented.
 - [*] Minimum dataset manifest format is accepted.
 - [*] Dataset inventory attestation workflow is implemented.
-- [ ] Dataset revision receipt workflow distinguishes new, changed, removed,
+- [*] Dataset revision receipt workflow distinguishes new, changed, removed,
       and unchanged files or records.
 - [ ] Licensed-content audit package example exists.
 - [ ] Model-card provenance attachment example exists.

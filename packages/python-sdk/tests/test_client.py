@@ -98,6 +98,42 @@ def sample_dataset_inventory_record() -> dict:
     }
 
 
+def sample_dataset_revision_record() -> dict:
+    return {
+        "record_type": "dataset_revision_record",
+        "schema_version": "0.1",
+        "dataset": {
+            "name": "Training Dataset",
+            "previous_version": "2026.05",
+            "next_version": "2026.06",
+        },
+        "summary": {
+            "new_file_count": 1,
+            "changed_file_count": 1,
+            "removed_file_count": 1,
+            "unchanged_file_count": 2,
+            "previous_dataset_root_hash": "a" * 64,
+            "next_dataset_root_hash": "b" * 64,
+            "revision_root_hash": "c" * 64,
+            "hash_algorithm": "sha256",
+        },
+        "changes": {
+            "new": [{"path": "train/new.jsonl", "sha256": "d" * 64, "byte_size": 120}],
+            "changed": [
+                {
+                    "path": "train/changed.jsonl",
+                    "previous_sha256": "e" * 64,
+                    "next_sha256": "f" * 64,
+                    "previous_byte_size": 100,
+                    "next_byte_size": 140,
+                }
+            ],
+            "removed": [{"path": "train/removed.jsonl", "sha256": "1" * 64, "byte_size": 80}],
+            "unchanged": [{"path": "eval/stable.jsonl", "sha256": "2" * 64, "byte_size": 64}],
+        },
+    }
+
+
 class ClientTests(unittest.TestCase):
     def test_list_projects_sends_bearer_auth_and_parses_rate_limit_meta(self) -> None:
         seen = {}
@@ -300,6 +336,39 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(seen["body"]["sourceMetadata"]["fileCount"], 2)
         self.assertEqual(seen["body"]["sourceMetadata"]["datasetRootHash"], "b" * 64)
         self.assertEqual(seen["body"]["sourceMetadata"]["retentionRule"], "7 years")
+
+    def test_create_dataset_revision_attestation_builds_canonical_metadata(self) -> None:
+        seen = {}
+
+        def fake_urlopen(req, timeout=30):
+            seen["url"] = req.full_url
+            seen["headers"] = dict(req.header_items())
+            seen["body"] = json.loads(req.data.decode("utf-8"))
+            return FakeResponse({"data": {"id": "att_revision"}, "meta": {}})
+
+        client = ProveriaClient(api_key="prv_v1_test", tenant="evaluation-workspace", api_url="http://api.test")
+        with patch("proveria.client.urlopen", fake_urlopen):
+            client.attestations.create_dataset_revision(
+                project="datasets",
+                record=sample_dataset_revision_record(),
+                idempotency_key="dataset_revision_1",
+            )
+
+        self.assertEqual(
+            seen["url"],
+            "http://api.test/v1/tenants/evaluation-workspace/projects/datasets/attestations",
+        )
+        self.assertEqual(seen["headers"]["Idempotency-key"], "dataset_revision_1")
+        self.assertEqual(seen["body"]["label"], "Training Dataset 2026.05 to 2026.06 revision")
+        self.assertEqual(seen["body"]["fileName"], "dataset-revision.json")
+        self.assertRegex(seen["body"]["sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(seen["body"]["sourceMetadata"]["canonicalHash"], seen["body"]["sha256"])
+        self.assertEqual(seen["body"]["sourceMetadata"]["provider"], "dataset_revision")
+        self.assertEqual(seen["body"]["sourceMetadata"]["datasetName"], "Training Dataset")
+        self.assertEqual(seen["body"]["sourceMetadata"]["previousDatasetVersion"], "2026.05")
+        self.assertEqual(seen["body"]["sourceMetadata"]["nextDatasetVersion"], "2026.06")
+        self.assertEqual(seen["body"]["sourceMetadata"]["revisionRootHash"], "c" * 64)
+        self.assertEqual(seen["body"]["sourceMetadata"]["changedFileCount"], 1)
 
     def test_compatibility_aliases_still_work(self) -> None:
         seen = {}

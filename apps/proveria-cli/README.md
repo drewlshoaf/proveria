@@ -154,6 +154,35 @@ proveria dataset attest ./dataset-inventory.json \
 The attestation commits the canonical inventory record hash and dataset summary
 metadata through the public API.
 
+To create a revision receipt, collect two inventory records and compare them:
+
+```bash
+proveria dataset collect ./dataset-v1 \
+  --output ./dataset-2026.05.json \
+  --name "Training Dataset" \
+  --version 2026.05
+
+proveria dataset collect ./dataset-v2 \
+  --output ./dataset-2026.06.json \
+  --name "Training Dataset" \
+  --version 2026.06
+
+proveria dataset revision \
+  --base ./dataset-2026.05.json \
+  --next ./dataset-2026.06.json \
+  --output ./dataset-revision.json
+
+proveria dataset inspect ./dataset-revision.json
+
+proveria dataset attest ./dataset-revision.json \
+  --project evaluation-evidence \
+  --name "Training Dataset 2026.05 to 2026.06 revision"
+```
+
+The revision record distinguishes new, changed, removed, and unchanged file
+paths. Renames are represented as one removed path and one new path in this v1
+format.
+
 ## Model Release Receipts
 
 `proveria model-release init` writes a claim-backed model provenance record

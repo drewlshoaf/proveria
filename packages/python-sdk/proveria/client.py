@@ -233,6 +233,23 @@ class ProveriaClient:
             idempotency_key=idempotency_key,
         )
 
+    def create_dataset_revision_attestation(
+        self,
+        *,
+        project: str,
+        record: JsonObject,
+        label: str | None = None,
+        file_name: str = "dataset-revision.json",
+        idempotency_key: str | None = None,
+    ) -> JsonObject:
+        return self.attestations.create_dataset_revision(
+            project=project,
+            record=record,
+            label=label,
+            file_name=file_name,
+            idempotency_key=idempotency_key,
+        )
+
     def get_attestation(self, attestation_id: str) -> JsonObject:
         return self.attestations.get(attestation_id)
 
@@ -467,6 +484,33 @@ class AttestationsApi:
         return self.create_hash(
             project=project,
             label=label or f"{source_metadata['datasetName']} {source_metadata['datasetVersion']} inventory",
+            sha256=canonical_hash,
+            file_name=file_name,
+            byte_size=len(canonical.encode("utf-8")),
+            source_metadata=source_metadata,
+            idempotency_key=idempotency_key,
+        )
+
+    def create_dataset_revision(
+        self,
+        *,
+        project: str,
+        record: JsonObject,
+        label: str | None = None,
+        file_name: str = "dataset-revision.json",
+        idempotency_key: str | None = None,
+    ) -> JsonObject:
+        canonical = _canonical_json(record)
+        canonical_hash = _sha256(canonical.encode("utf-8")).hexdigest()
+        source_metadata = _dataset_revision_source_metadata(record, canonical_hash)
+        return self.create_hash(
+            project=project,
+            label=label
+            or (
+                f"{source_metadata['datasetName']} "
+                f"{source_metadata['previousDatasetVersion']} to "
+                f"{source_metadata['nextDatasetVersion']} revision"
+            ),
             sha256=canonical_hash,
             file_name=file_name,
             byte_size=len(canonical.encode("utf-8")),
@@ -873,6 +917,28 @@ def _dataset_inventory_source_metadata(record: JsonObject, canonical_hash: str) 
     if retention_rule:
         metadata["retentionRule"] = retention_rule
     return metadata
+
+
+def _dataset_revision_source_metadata(record: JsonObject, canonical_hash: str) -> JsonObject:
+    record_type = _required_string(record, ("record_type",))
+    if record_type != "dataset_revision_record":
+        raise ValueError("record_type must be dataset_revision_record")
+    return {
+        "provider": "dataset_revision",
+        "recordType": "dataset_revision_record",
+        "schemaVersion": _required_string(record, ("schema_version",)),
+        "canonicalHash": canonical_hash,
+        "datasetName": _required_string(record, ("dataset", "name")),
+        "previousDatasetVersion": _required_string(record, ("dataset", "previous_version")),
+        "nextDatasetVersion": _required_string(record, ("dataset", "next_version")),
+        "previousDatasetRootHash": _required_sha256(record, ("summary", "previous_dataset_root_hash")),
+        "nextDatasetRootHash": _required_sha256(record, ("summary", "next_dataset_root_hash")),
+        "revisionRootHash": _required_sha256(record, ("summary", "revision_root_hash")),
+        "newFileCount": _required_int(record, ("summary", "new_file_count")),
+        "changedFileCount": _required_int(record, ("summary", "changed_file_count")),
+        "removedFileCount": _required_int(record, ("summary", "removed_file_count")),
+        "unchangedFileCount": _required_int(record, ("summary", "unchanged_file_count")),
+    }
 
 
 def _value_at_path(record: JsonObject, path: tuple[str, ...]) -> Any:
