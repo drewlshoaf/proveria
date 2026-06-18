@@ -398,6 +398,98 @@ describe('attestation lifecycle (device-signed)', () => {
     );
   });
 
+  it('stores model release provenance metadata on the submission attempt', async () => {
+    const owner = await registerOwner('owner@example.com');
+    await createProject(owner, 'p1');
+    const device = await pairDevice(owner);
+    const hash = 'a'.repeat(64);
+
+    const createReq = await signedRequest(
+      device,
+      'POST',
+      `/tenants/${owner.tenant.slug}/projects/p1/attestations`,
+      {
+        label: 'model-release',
+        sourceMetadata: {
+          provider: 'model_release',
+          recordType: 'model_provenance_record',
+          schemaVersion: '0.1',
+          canonicalHash: hash,
+          modelName: 'Graduation Model',
+          modelVersion: '2026.06.17',
+          modelType: 'Classifier',
+          releaseStage: 'production',
+          claimType: 'model_release_approved',
+          claimText: 'This model version was approved for production release.',
+          claimScope: 'full_release_package',
+          subjectType: 'model_artifact',
+          subjectIdentifier: 'registry://models/graduation/2026.06.17',
+          subjectHash: hash,
+          artifactManifestHash: hash,
+          modelCardHash: hash,
+          datasetManifestHash: hash,
+          evaluationReportHash: hash,
+          riskReviewHash: hash,
+          policyId: 'AI-GOV-001',
+          policyVersion: '2026.1',
+          policyDecision: 'approved',
+          finalApprover: 'Model Risk Committee',
+          finalApprovalTimestamp: '2026-06-17T14:30:00Z',
+          disclosureMode: 'public_receipt_private_evidence',
+          verificationPolicy: 'verify_model_release_claim',
+          retentionPeriod: '7 years',
+          knownLimitations: 'Requires monitoring for drift.',
+        },
+      },
+    );
+
+    const create = await app.inject(createReq);
+    expect(create.statusCode).toBe(201);
+    const created = create.json() as {
+      attestation: { id: string };
+      attempt: { id: string };
+    };
+
+    const attempts = await dbHandle.sql<
+      { source_metadata: Record<string, unknown> }[]
+    >`
+      SELECT source_metadata FROM public.submission_attempts
+      WHERE id = ${created.attempt.id}`;
+    expect(attempts[0]!.source_metadata).toEqual(
+      expect.objectContaining({
+        provider: 'model_release',
+        recordType: 'model_provenance_record',
+        canonicalHash: hash,
+        modelName: 'Graduation Model',
+        modelVersion: '2026.06.17',
+        claimType: 'model_release_approved',
+        policyId: 'AI-GOV-001',
+        createdByUserId: owner.userId,
+      }),
+    );
+
+    const detail = await app.inject(
+      await signedRequest(
+        device,
+        'GET',
+        `/attestations/${created.attestation.id}`,
+        undefined,
+      ),
+    );
+    expect(detail.statusCode).toBe(200);
+    const body = detail.json() as {
+      attempts: Array<{ sourceMetadata: Record<string, unknown> | null }>;
+    };
+    expect(body.attempts[0]?.sourceMetadata).toEqual(
+      expect.objectContaining({
+        provider: 'model_release',
+        modelName: 'Graduation Model',
+        canonicalHash: hash,
+        subjectHash: hash,
+      }),
+    );
+  });
+
   it('rejects unsigned request to create-attestation with 401', async () => {
     const owner = await registerOwner('owner@example.com');
     await createProject(owner, 'p1');

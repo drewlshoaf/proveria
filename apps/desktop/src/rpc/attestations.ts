@@ -362,7 +362,32 @@ export const registerAttestationRpc = (): void => {
                   ? { google_account_email: sourceMetadata.googleAccountEmail }
                   : {}),
               }
-            : null;
+            : sourceMetadata?.provider === 'model_release'
+              ? {
+                  provider: 'model_release',
+                  record_type: sourceMetadata.recordType,
+                  schema_version: sourceMetadata.schemaVersion,
+                  canonical_hash: sourceMetadata.canonicalHash,
+                  model_name: sourceMetadata.modelName,
+                  model_version: sourceMetadata.modelVersion,
+                  model_type: sourceMetadata.modelType,
+                  release_stage: sourceMetadata.releaseStage,
+                  claim_type: sourceMetadata.claimType,
+                  claim_scope: sourceMetadata.claimScope,
+                  subject_type: sourceMetadata.subjectType,
+                  subject_identifier: sourceMetadata.subjectIdentifier,
+                  subject_hash: sourceMetadata.subjectHash,
+                  artifact_manifest_hash: sourceMetadata.artifactManifestHash,
+                  model_card_hash: sourceMetadata.modelCardHash,
+                  dataset_manifest_hash: sourceMetadata.datasetManifestHash,
+                  evaluation_report_hash: sourceMetadata.evaluationReportHash,
+                  policy_id: sourceMetadata.policyId,
+                  policy_version: sourceMetadata.policyVersion,
+                  policy_decision: sourceMetadata.policyDecision,
+                  disclosure_mode: sourceMetadata.disclosureMode,
+                  verification_policy: sourceMetadata.verificationPolicy,
+                }
+              : null;
 
         const shingleLeaves = contentProofShingles.map((shingle) => ({
           leafType: LEAF_TYPES.shingleSha256V1,

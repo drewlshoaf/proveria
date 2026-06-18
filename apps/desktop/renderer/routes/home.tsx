@@ -63,14 +63,51 @@ interface GoogleDriveSourceMetadata {
   mimeType?: string;
   size?: number;
   modifiedTime?: string;
-  selectedByUserId: string;
-  selectedAt: string;
+  selectedByUserId?: string;
+  selectedAt?: string;
   googleAccountEmail?: string;
 }
 
+interface ModelReleaseSourceMetadata {
+  provider: 'model_release';
+  recordType: 'model_provenance_record';
+  schemaVersion: string;
+  canonicalHash: string;
+  modelName: string;
+  modelVersion: string;
+  modelType: string;
+  releaseStage: string;
+  claimType: string;
+  claimText: string;
+  claimScope: string;
+  subjectType: string;
+  subjectIdentifier: string;
+  subjectHash: string;
+  artifactManifestHash: string;
+  modelCardHash: string;
+  datasetManifestHash: string;
+  evaluationReportHash: string;
+  riskReviewHash?: string;
+  policyId: string;
+  policyVersion: string;
+  policyDecision: string;
+  finalApprover: string;
+  finalApprovalTimestamp: string;
+  disclosureMode: string;
+  verificationPolicy: string;
+  createdByUserId?: string;
+  createdAt?: string;
+  retentionPeriod?: string;
+  knownLimitations?: string;
+}
+
+type AttestationSourceMetadata =
+  | GoogleDriveSourceMetadata
+  | ModelReleaseSourceMetadata;
+
 interface AttestationSourceAttemptLike {
   isConfirmed: boolean;
-  sourceMetadata?: GoogleDriveSourceMetadata | null;
+  sourceMetadata?: AttestationSourceMetadata | null;
 }
 
 interface TenantMemberCacheEntry {
@@ -83,11 +120,64 @@ interface TenantMemberCacheEntry {
   }>;
 }
 
-type HashMode = 'file' | 'external' | 'google_drive';
+type HashMode = 'file' | 'external' | 'google_drive' | 'model_release';
+
+interface ModelReleaseFormState {
+  modelName: string;
+  modelVersion: string;
+  modelType: string;
+  releaseStage: string;
+  claimType: string;
+  claimText: string;
+  claimScope: string;
+  subjectType: string;
+  subjectIdentifier: string;
+  subjectHash: string;
+  artifactManifestHash: string;
+  modelCardHash: string;
+  datasetManifestHash: string;
+  evaluationReportHash: string;
+  riskReviewHash: string;
+  policyId: string;
+  policyVersion: string;
+  policyDecision: string;
+  finalApprover: string;
+  finalApprovalTimestamp: string;
+  disclosureMode: string;
+  verificationPolicy: string;
+  retentionPeriod: string;
+  knownLimitations: string;
+}
 
 const DEFAULT_GRANT_EMAIL = import.meta.env.DEV
   ? 'verifier-eval@example.com'
   : '';
+const DEFAULT_MODEL_RELEASE_FORM: ModelReleaseFormState = {
+  modelName: '',
+  modelVersion: '',
+  modelType: 'LLM',
+  releaseStage: 'production',
+  claimType: 'model_release_approved',
+  claimText: 'This model version was approved for production release.',
+  claimScope: 'full_release_package',
+  subjectType: 'model_artifact',
+  subjectIdentifier: '',
+  subjectHash: '',
+  artifactManifestHash: '',
+  modelCardHash: '',
+  datasetManifestHash: '',
+  evaluationReportHash: '',
+  riskReviewHash: '',
+  policyId: '',
+  policyVersion: '',
+  policyDecision: 'approved',
+  finalApprover: '',
+  finalApprovalTimestamp: '',
+  disclosureMode: 'public_receipt_private_evidence',
+  verificationPolicy: 'verify_model_release_claim',
+  retentionPeriod: '',
+  knownLimitations: '',
+};
 const PROJECT_NOUN_OPTIONS = [
   'Project',
   'Team',
@@ -142,6 +232,8 @@ export const HomeRoute = (): React.JSX.Element => {
   const [driveMimeType, setDriveMimeType] = useState('');
   const [driveModifiedTime, setDriveModifiedTime] = useState('');
   const [driveAccountEmail, setDriveAccountEmail] = useState('');
+  const [modelReleaseForm, setModelReleaseForm] =
+    useState<ModelReleaseFormState>(DEFAULT_MODEL_RELEASE_FORM);
   const [hashing, setHashing] = useState(false);
   const [attestationError, setAttestationError] = useState<string | null>(null);
   const [attestationDropActive, setAttestationDropActive] = useState(false);
@@ -540,8 +632,44 @@ export const HomeRoute = (): React.JSX.Element => {
       return result.value.jobs;
     },
   });
+  const modelReleaseRecord = useMemo(
+    () => buildModelReleaseRecord(modelReleaseForm),
+    [modelReleaseForm],
+  );
+  const [modelReleaseHash, setModelReleaseHash] = useState('');
+  useEffect(() => {
+    let canceled = false;
+    void sha256TextHex(stableCanonicalJson(modelReleaseRecord)).then((hash) => {
+      if (!canceled) setModelReleaseHash(hash);
+    });
+    return () => {
+      canceled = true;
+    };
+  }, [modelReleaseRecord]);
   const submittedHash =
-    hashMode === 'external' ? externalHash.trim().toLowerCase() : '';
+    hashMode === 'external'
+      ? externalHash.trim().toLowerCase()
+      : hashMode === 'model_release'
+        ? modelReleaseHash
+        : '';
+  const modelReleaseReady =
+    isValidAttestationName(attestationLabel) &&
+    Boolean(modelReleaseForm.modelName.trim()) &&
+    Boolean(modelReleaseForm.modelVersion.trim()) &&
+    Boolean(modelReleaseForm.claimText.trim()) &&
+    Boolean(modelReleaseForm.subjectIdentifier.trim()) &&
+    HEX64.test(modelReleaseForm.subjectHash.trim().toLowerCase()) &&
+    HEX64.test(modelReleaseForm.artifactManifestHash.trim().toLowerCase()) &&
+    HEX64.test(modelReleaseForm.modelCardHash.trim().toLowerCase()) &&
+    HEX64.test(modelReleaseForm.datasetManifestHash.trim().toLowerCase()) &&
+    HEX64.test(modelReleaseForm.evaluationReportHash.trim().toLowerCase()) &&
+    (!modelReleaseForm.riskReviewHash.trim() ||
+      HEX64.test(modelReleaseForm.riskReviewHash.trim().toLowerCase())) &&
+    Boolean(modelReleaseForm.policyId.trim()) &&
+    Boolean(modelReleaseForm.policyVersion.trim()) &&
+    Boolean(modelReleaseForm.finalApprover.trim()) &&
+    Boolean(modelReleaseForm.finalApprovalTimestamp.trim()) &&
+    HEX64.test(modelReleaseHash);
   const driveFileId = parseGoogleDriveFileId(driveFileReference);
   const fileAttestationsReady =
     (hashMode === 'file' || hashMode === 'google_drive') &&
@@ -1116,7 +1244,9 @@ export const HomeRoute = (): React.JSX.Element => {
       ? fileAttestationsReady
       : hashMode === 'google_drive'
         ? fileAttestationsReady && Boolean(driveFileId)
-      : isValidAttestationName(attestationLabel) && HEX64.test(submittedHash));
+        : hashMode === 'model_release'
+          ? modelReleaseReady
+          : isValidAttestationName(attestationLabel) && HEX64.test(submittedHash));
   const receiptPdfUrl = buildVerificationPdfUrl(
     session.data?.apiUrl,
     selectedReceiptLinkId,
@@ -2009,6 +2139,88 @@ export const HomeRoute = (): React.JSX.Element => {
     };
   };
 
+  const updateModelReleaseField = (
+    field: keyof ModelReleaseFormState,
+    value: string,
+  ): void => {
+    setModelReleaseForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const generateModelReleaseHashes = async (): Promise<void> => {
+    const seed = stableCanonicalJson({
+      record_type: 'model_release_hash_seed',
+      model_name: modelReleaseForm.modelName.trim() || 'model',
+      model_version: modelReleaseForm.modelVersion.trim() || 'version',
+      claim_type: modelReleaseForm.claimType,
+      subject_identifier:
+        modelReleaseForm.subjectIdentifier.trim() || 'subject',
+    });
+    const [
+      subjectHash,
+      artifactManifestHash,
+      modelCardHash,
+      datasetManifestHash,
+      evaluationReportHash,
+      riskReviewHash,
+    ] = await Promise.all([
+      sha256TextHex(`${seed}:subject`),
+      sha256TextHex(`${seed}:artifact-manifest`),
+      sha256TextHex(`${seed}:model-card`),
+      sha256TextHex(`${seed}:dataset-manifest`),
+      sha256TextHex(`${seed}:evaluation-report`),
+      sha256TextHex(`${seed}:risk-review`),
+    ]);
+    setModelReleaseForm((current) => ({
+      ...current,
+      subjectHash,
+      artifactManifestHash,
+      modelCardHash,
+      datasetManifestHash,
+      evaluationReportHash,
+      riskReviewHash,
+    }));
+  };
+
+  const buildModelReleaseSourceMetadata = (): ModelReleaseSourceMetadata => ({
+    provider: 'model_release',
+    recordType: 'model_provenance_record',
+    schemaVersion: modelReleaseRecord.schema_version,
+    canonicalHash: modelReleaseHash,
+    modelName: modelReleaseForm.modelName.trim(),
+    modelVersion: modelReleaseForm.modelVersion.trim(),
+    modelType: modelReleaseForm.modelType,
+    releaseStage: modelReleaseForm.releaseStage,
+    claimType: modelReleaseForm.claimType,
+    claimText: modelReleaseForm.claimText.trim(),
+    claimScope: modelReleaseForm.claimScope,
+    subjectType: modelReleaseForm.subjectType,
+    subjectIdentifier: modelReleaseForm.subjectIdentifier.trim(),
+    subjectHash: modelReleaseForm.subjectHash.trim().toLowerCase(),
+    artifactManifestHash:
+      modelReleaseForm.artifactManifestHash.trim().toLowerCase(),
+    modelCardHash: modelReleaseForm.modelCardHash.trim().toLowerCase(),
+    datasetManifestHash:
+      modelReleaseForm.datasetManifestHash.trim().toLowerCase(),
+    evaluationReportHash:
+      modelReleaseForm.evaluationReportHash.trim().toLowerCase(),
+    ...(modelReleaseForm.riskReviewHash.trim()
+      ? { riskReviewHash: modelReleaseForm.riskReviewHash.trim().toLowerCase() }
+      : {}),
+    policyId: modelReleaseForm.policyId.trim(),
+    policyVersion: modelReleaseForm.policyVersion.trim(),
+    policyDecision: modelReleaseForm.policyDecision,
+    finalApprover: modelReleaseForm.finalApprover.trim(),
+    finalApprovalTimestamp: modelReleaseForm.finalApprovalTimestamp.trim(),
+    disclosureMode: modelReleaseForm.disclosureMode,
+    verificationPolicy: modelReleaseForm.verificationPolicy,
+    ...(modelReleaseForm.retentionPeriod.trim()
+      ? { retentionPeriod: modelReleaseForm.retentionPeriod.trim() }
+      : {}),
+    ...(modelReleaseForm.knownLimitations.trim()
+      ? { knownLimitations: modelReleaseForm.knownLimitations.trim() }
+      : {}),
+  });
+
   const submitAttestation = async (
     e: FormEvent<HTMLFormElement>,
   ): Promise<void> => {
@@ -2021,7 +2233,8 @@ export const HomeRoute = (): React.JSX.Element => {
           )
         : null;
     const invalidExternalLabel =
-      hashMode === 'external' && !isValidAttestationName(attestationLabel);
+      (hashMode === 'external' || hashMode === 'model_release') &&
+      !isValidAttestationName(attestationLabel);
     if (invalidFileLabel || invalidExternalLabel) {
       setAttestationError(ATTESTATION_NAME_HELP);
       return;
@@ -2054,6 +2267,24 @@ export const HomeRoute = (): React.JSX.Element => {
             exactImageProof: file.exactImageProof,
             sourceMetadata: buildGoogleDriveSourceMetadata(file),
           }))
+        : hashMode === 'model_release'
+          ? [
+              {
+                clientId: `model-release-${modelReleaseHash.slice(0, 12)}`,
+                label: attestationLabel.trim(),
+                description: `Model release provenance claim for ${modelReleaseForm.modelName.trim()} ${modelReleaseForm.modelVersion.trim()}.`,
+                fileName: `model-release-${slugify(
+                  modelReleaseForm.modelName || 'model',
+                )}-${slugify(modelReleaseForm.modelVersion || 'version')}.json`,
+                fileSize: new TextEncoder().encode(
+                  stableCanonicalJson(modelReleaseRecord),
+                ).byteLength,
+                sha256Hex: modelReleaseHash,
+                contentProof: undefined,
+                exactImageProof: undefined,
+                sourceMetadata: buildModelReleaseSourceMetadata(),
+              },
+            ]
         : [
             {
               clientId: `external-${submittedHash.slice(0, 12)}`,
@@ -5143,7 +5374,7 @@ export const HomeRoute = (): React.JSX.Element => {
               </div>
 
               <div className="mt-5 grid gap-4">
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-3">
                   <button
                     type="button"
                     onClick={() => {
@@ -5187,6 +5418,30 @@ export const HomeRoute = (): React.JSX.Element => {
                     <span className="mt-1 block text-[12px] leading-5 text-neutral-500">
                       Commit a hash produced outside Proveria. This records
                       whole-file coverage only and does not add content shingles.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHashMode('model_release');
+                      setAttestationFiles([]);
+                      setExternalHash('');
+                      setAttestationDropActive(false);
+                      setAttestationResults([]);
+                    }}
+                    className={`border p-4 text-left ${
+                      hashMode === 'model_release'
+                        ? 'border-neutral-900 bg-neutral-50'
+                        : 'border-[var(--color-border)] hover:border-neutral-700'
+                    }`}
+                  >
+                    <span className="block text-[14px] font-medium">
+                      Model release receipt
+                    </span>
+                    <span className="mt-1 block text-[12px] leading-5 text-neutral-500">
+                      Build a claim-backed provenance record for a model
+                      version, hash it locally, and generate a verifiable
+                      receipt.
                     </span>
                   </button>
                   {SHOW_GOOGLE_SURFACES && (
@@ -5406,6 +5661,445 @@ export const HomeRoute = (): React.JSX.Element => {
                     </label>
                   </ProjectField>
                   </>
+                ) : hashMode === 'model_release' ? (
+                  <div className="grid gap-4 border border-[var(--color-border)] bg-neutral-50 p-4">
+                    <div className="grid gap-3 md:grid-cols-4">
+                      <ProjectField label="Model name" htmlFor="modelName">
+                        <input
+                          id="modelName"
+                          value={modelReleaseForm.modelName}
+                          onChange={(e) =>
+                            updateModelReleaseField('modelName', e.target.value)
+                          }
+                          required
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        />
+                      </ProjectField>
+                      <ProjectField label="Model version" htmlFor="modelVersion">
+                        <input
+                          id="modelVersion"
+                          value={modelReleaseForm.modelVersion}
+                          onChange={(e) =>
+                            updateModelReleaseField(
+                              'modelVersion',
+                              e.target.value,
+                            )
+                          }
+                          required
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        />
+                      </ProjectField>
+                      <ProjectField label="Model type" htmlFor="modelType">
+                        <select
+                          id="modelType"
+                          value={modelReleaseForm.modelType}
+                          onChange={(e) =>
+                            updateModelReleaseField('modelType', e.target.value)
+                          }
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        >
+                          <option>LLM</option>
+                          <option>Classifier</option>
+                          <option>Recommender</option>
+                          <option>Embedding model</option>
+                          <option>Vision model</option>
+                          <option>Speech model</option>
+                          <option>Multimodal model</option>
+                          <option>Other</option>
+                        </select>
+                      </ProjectField>
+                      <ProjectField label="Release stage" htmlFor="releaseStage">
+                        <select
+                          id="releaseStage"
+                          value={modelReleaseForm.releaseStage}
+                          onChange={(e) =>
+                            updateModelReleaseField(
+                              'releaseStage',
+                              e.target.value,
+                            )
+                          }
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        >
+                          <option value="draft">Draft</option>
+                          <option value="internal_test">Internal test</option>
+                          <option value="staging">Staging</option>
+                          <option value="production">Production</option>
+                          <option value="deprecated">Deprecated</option>
+                          <option value="retired">Retired</option>
+                        </select>
+                      </ProjectField>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <ProjectField label="Claim type" htmlFor="claimType">
+                        <select
+                          id="claimType"
+                          value={modelReleaseForm.claimType}
+                          onChange={(e) =>
+                            updateModelReleaseField('claimType', e.target.value)
+                          }
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        >
+                          <option value="model_release_approved">
+                            Model release approved
+                          </option>
+                          <option value="trained_on_dataset">
+                            Trained on dataset
+                          </option>
+                          <option value="not_trained_on_dataset">
+                            Not trained on dataset
+                          </option>
+                          <option value="evaluated_against_benchmark">
+                            Evaluated against benchmark
+                          </option>
+                          <option value="approved_under_policy">
+                            Approved under policy
+                          </option>
+                          <option value="risk_review_completed">
+                            Risk review completed
+                          </option>
+                          <option value="model_card_complete">
+                            Model card complete
+                          </option>
+                          <option value="deployment_authorized">
+                            Deployment authorized
+                          </option>
+                        </select>
+                      </ProjectField>
+                      <ProjectField label="Claim scope" htmlFor="claimScope">
+                        <select
+                          id="claimScope"
+                          value={modelReleaseForm.claimScope}
+                          onChange={(e) =>
+                            updateModelReleaseField('claimScope', e.target.value)
+                          }
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        >
+                          <option value="model_version">Model version</option>
+                          <option value="dataset">Dataset</option>
+                          <option value="training_run">Training run</option>
+                          <option value="evaluation">Evaluation</option>
+                          <option value="approval">Approval</option>
+                          <option value="deployment">Deployment</option>
+                          <option value="full_release_package">
+                            Full release package
+                          </option>
+                        </select>
+                      </ProjectField>
+                      <ProjectField label="Subject type" htmlFor="subjectType">
+                        <select
+                          id="subjectType"
+                          value={modelReleaseForm.subjectType}
+                          onChange={(e) =>
+                            updateModelReleaseField('subjectType', e.target.value)
+                          }
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        >
+                          <option value="model_artifact">Model artifact</option>
+                          <option value="dataset_manifest">
+                            Dataset manifest
+                          </option>
+                          <option value="training_run">Training run</option>
+                          <option value="evaluation_report">
+                            Evaluation report
+                          </option>
+                          <option value="approval_record">
+                            Approval record
+                          </option>
+                          <option value="deployment_package">
+                            Deployment package
+                          </option>
+                        </select>
+                      </ProjectField>
+                    </div>
+
+                    <ProjectField label="Claim text" htmlFor="claimText">
+                      <textarea
+                        id="claimText"
+                        value={modelReleaseForm.claimText}
+                        onChange={(e) =>
+                          updateModelReleaseField('claimText', e.target.value)
+                        }
+                        required
+                        rows={3}
+                        className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                      />
+                    </ProjectField>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <ProjectField
+                        label="Subject identifier"
+                        htmlFor="subjectIdentifier"
+                      >
+                        <input
+                          id="subjectIdentifier"
+                          value={modelReleaseForm.subjectIdentifier}
+                          onChange={(e) =>
+                            updateModelReleaseField(
+                              'subjectIdentifier',
+                              e.target.value,
+                            )
+                          }
+                          required
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        />
+                      </ProjectField>
+                      <ProjectField label="Subject hash" htmlFor="subjectHash">
+                        <input
+                          id="subjectHash"
+                          value={modelReleaseForm.subjectHash}
+                          onChange={(e) =>
+                            updateModelReleaseField(
+                              'subjectHash',
+                              e.target.value.trim().toLowerCase(),
+                            )
+                          }
+                          required
+                          placeholder="64 lowercase hex characters"
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 font-mono text-[13px] focus:border-neutral-700 focus:outline-none"
+                        />
+                      </ProjectField>
+                    </div>
+
+                    <div className="grid gap-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[12px] font-medium uppercase text-neutral-500">
+                            Evidence hashes
+                          </div>
+                          <p className="mt-1 text-[12px] text-neutral-500">
+                            Generate QA hashes from the model and claim context,
+                            or replace them with real artifact hashes.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void generateModelReleaseHashes()}
+                          className="border border-[var(--color-border)] bg-white px-3 py-2 text-[12px] font-medium hover:border-neutral-700"
+                        >
+                          Generate hashes
+                        </button>
+                      </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {([
+                        ['artifactManifestHash', 'Artifact manifest hash'],
+                        ['modelCardHash', 'Model card hash'],
+                        ['datasetManifestHash', 'Dataset manifest hash'],
+                        ['evaluationReportHash', 'Evaluation report hash'],
+                        ['riskReviewHash', 'Risk review hash'],
+                      ] satisfies Array<[keyof ModelReleaseFormState, string]>).map(([field, label]) => (
+                        <ProjectField
+                          key={field}
+                          label={label}
+                          htmlFor={field}
+                        >
+                          <input
+                            id={field}
+                            value={
+                              modelReleaseForm[
+                                field as keyof ModelReleaseFormState
+                              ]
+                            }
+                            onChange={(e) =>
+                              updateModelReleaseField(
+                                field as keyof ModelReleaseFormState,
+                                e.target.value.trim().toLowerCase(),
+                              )
+                            }
+                            required={field !== 'riskReviewHash'}
+                            placeholder="64 lowercase hex characters"
+                            className="w-full border border-[var(--color-border)] bg-white px-3 py-2 font-mono text-[13px] focus:border-neutral-700 focus:outline-none"
+                          />
+                        </ProjectField>
+                      ))}
+                    </div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-4">
+                      <ProjectField label="Policy ID" htmlFor="policyId">
+                        <input
+                          id="policyId"
+                          value={modelReleaseForm.policyId}
+                          onChange={(e) =>
+                            updateModelReleaseField('policyId', e.target.value)
+                          }
+                          required
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        />
+                      </ProjectField>
+                      <ProjectField
+                        label="Policy version"
+                        htmlFor="policyVersion"
+                      >
+                        <input
+                          id="policyVersion"
+                          value={modelReleaseForm.policyVersion}
+                          onChange={(e) =>
+                            updateModelReleaseField(
+                              'policyVersion',
+                              e.target.value,
+                            )
+                          }
+                          required
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        />
+                      </ProjectField>
+                      <ProjectField
+                        label="Policy decision"
+                        htmlFor="policyDecision"
+                      >
+                        <select
+                          id="policyDecision"
+                          value={modelReleaseForm.policyDecision}
+                          onChange={(e) =>
+                            updateModelReleaseField(
+                              'policyDecision',
+                              e.target.value,
+                            )
+                          }
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        >
+                          <option value="approved">Approved</option>
+                          <option value="rejected">Rejected</option>
+                          <option value="approved_with_exception">
+                            Approved with exception
+                          </option>
+                          <option value="needs_more_review">
+                            Needs more review
+                          </option>
+                        </select>
+                      </ProjectField>
+                      <ProjectField
+                        label="Final approver"
+                        htmlFor="finalApprover"
+                      >
+                        <input
+                          id="finalApprover"
+                          value={modelReleaseForm.finalApprover}
+                          onChange={(e) =>
+                            updateModelReleaseField(
+                              'finalApprover',
+                              e.target.value,
+                            )
+                          }
+                          required
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        />
+                      </ProjectField>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <ProjectField
+                        label="Final approval time"
+                        htmlFor="finalApprovalTimestamp"
+                      >
+                        <input
+                          id="finalApprovalTimestamp"
+                          type="datetime-local"
+                          value={modelReleaseForm.finalApprovalTimestamp}
+                          onChange={(e) =>
+                            updateModelReleaseField(
+                              'finalApprovalTimestamp',
+                              e.target.value,
+                            )
+                          }
+                          required
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        />
+                      </ProjectField>
+                      <ProjectField
+                        label="Disclosure mode"
+                        htmlFor="disclosureMode"
+                      >
+                        <select
+                          id="disclosureMode"
+                          value={modelReleaseForm.disclosureMode}
+                          onChange={(e) =>
+                            updateModelReleaseField(
+                              'disclosureMode',
+                              e.target.value,
+                            )
+                          }
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        >
+                          <option value="public_receipt_public_evidence">
+                            Public receipt, public evidence
+                          </option>
+                          <option value="public_receipt_private_evidence">
+                            Public receipt, private evidence
+                          </option>
+                          <option value="private_receipt_private_evidence">
+                            Private receipt, private evidence
+                          </option>
+                          <option value="auditor_only">Auditor only</option>
+                          <option value="request_based">Request based</option>
+                          <option value="internal_only">Internal only</option>
+                        </select>
+                      </ProjectField>
+                      <ProjectField
+                        label="Verification policy"
+                        htmlFor="verificationPolicy"
+                      >
+                        <input
+                          id="verificationPolicy"
+                          value={modelReleaseForm.verificationPolicy}
+                          onChange={(e) =>
+                            updateModelReleaseField(
+                              'verificationPolicy',
+                              e.target.value,
+                            )
+                          }
+                          required
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        />
+                      </ProjectField>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <ProjectField
+                        label="Retention period"
+                        htmlFor="retentionPeriod"
+                      >
+                        <input
+                          id="retentionPeriod"
+                          value={modelReleaseForm.retentionPeriod}
+                          onChange={(e) =>
+                            updateModelReleaseField(
+                              'retentionPeriod',
+                              e.target.value,
+                            )
+                          }
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        />
+                      </ProjectField>
+                      <ProjectField
+                        label="Known limitations"
+                        htmlFor="knownLimitations"
+                      >
+                        <textarea
+                          id="knownLimitations"
+                          value={modelReleaseForm.knownLimitations}
+                          onChange={(e) =>
+                            updateModelReleaseField(
+                              'knownLimitations',
+                              e.target.value,
+                            )
+                          }
+                          rows={2}
+                          className="w-full border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] focus:border-neutral-700 focus:outline-none"
+                        />
+                      </ProjectField>
+                    </div>
+
+                    <div>
+                      <div className="text-[12px] font-medium uppercase text-neutral-500">
+                        Model release record SHA-256
+                      </div>
+                      <div className="mt-1 break-all font-mono text-[12px] text-neutral-700">
+                        {modelReleaseHash || 'Computing...'}
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   <ProjectField label="External SHA-256" htmlFor="externalHash">
                     <input
@@ -5438,7 +6132,11 @@ export const HomeRoute = (): React.JSX.Element => {
                             attestationFiles.length === 1 ? '' : 's'
                           } selected. Review file hashes, content proof, and source details below.`
                         : 'Select one or more files to compute SHA-256 and extract content proof when possible.'
-                      : submittedHash || 'Paste a SHA-256 digest above. External hashes create whole-file coverage only.'}
+                      : hashMode === 'model_release'
+                        ? submittedHash ||
+                          'Complete the model release fields to compute the canonical record hash.'
+                        : submittedHash ||
+                          'Paste a SHA-256 digest above. External hashes create whole-file coverage only.'}
                   </div>
                   {hashMode === 'external' &&
                     submittedHash &&
@@ -5710,7 +6408,7 @@ export const HomeRoute = (): React.JSX.Element => {
               </div>
             </section>
 
-            {hashMode === 'external' && (
+            {(hashMode === 'external' || hashMode === 'model_release') && (
             <section className="border border-[var(--color-border)] p-5">
               <h2 className="text-[16px] font-medium">Results</h2>
 
@@ -6620,7 +7318,8 @@ export const HomeRoute = (): React.JSX.Element => {
                                   </>
                                 )}
                               </dl>
-                              {attempt.sourceMetadata && (
+                              {attempt.sourceMetadata?.provider ===
+                                'google_drive' && (
                                 <dl className="mt-3 grid grid-cols-[96px_1fr] gap-x-3 gap-y-1 border-t border-[var(--color-border)] pt-3 text-[12px]">
                                   <dt
                                     className="text-neutral-500"
@@ -6649,6 +7348,49 @@ export const HomeRoute = (): React.JSX.Element => {
                                     <CopyableValue
                                       value={attempt.sourceMetadata.fileId}
                                       label="Drive file id"
+                                    />
+                                  </dd>
+                                </dl>
+                              )}
+                              {attempt.sourceMetadata?.provider ===
+                                'model_release' && (
+                                <dl className="mt-3 grid grid-cols-[128px_1fr] gap-x-3 gap-y-1 border-t border-[var(--color-border)] pt-3 text-[12px]">
+                                  <dt className="text-neutral-500">Model</dt>
+                                  <dd>
+                                    {attempt.sourceMetadata.modelName}{' '}
+                                    {attempt.sourceMetadata.modelVersion}
+                                  </dd>
+                                  <dt className="text-neutral-500">
+                                    Claim type
+                                  </dt>
+                                  <dd>{attempt.sourceMetadata.claimType}</dd>
+                                  <dt className="text-neutral-500">
+                                    Policy
+                                  </dt>
+                                  <dd>
+                                    {attempt.sourceMetadata.policyId} @{' '}
+                                    {attempt.sourceMetadata.policyVersion}
+                                  </dd>
+                                  <dt className="text-neutral-500">
+                                    Decision
+                                  </dt>
+                                  <dd>{attempt.sourceMetadata.policyDecision}</dd>
+                                  <dt className="text-neutral-500">
+                                    Record hash
+                                  </dt>
+                                  <dd>
+                                    <CopyableValue
+                                      value={attempt.sourceMetadata.canonicalHash}
+                                      label="Model release record hash"
+                                    />
+                                  </dd>
+                                  <dt className="text-neutral-500">
+                                    Subject hash
+                                  </dt>
+                                  <dd>
+                                    <CopyableValue
+                                      value={attempt.sourceMetadata.subjectHash}
+                                      label="Model release subject hash"
                                     />
                                   </dd>
                                 </dl>
@@ -8931,7 +9673,7 @@ const labelHelp = (label: string): string => {
 
 const primaryAttestationSource = (
   attempts: AttestationSourceAttemptLike[],
-): GoogleDriveSourceMetadata | null => {
+): AttestationSourceMetadata | null => {
   return (
     attempts.find((attempt) => attempt.isConfirmed && attempt.sourceMetadata)
       ?.sourceMetadata ??
@@ -8941,9 +9683,10 @@ const primaryAttestationSource = (
 };
 
 const attestationSourceLabel = (
-  source: GoogleDriveSourceMetadata | null | undefined,
+  source: AttestationSourceMetadata | null | undefined,
 ): string => {
   if (source?.provider === 'google_drive') return 'Google Drive';
+  if (source?.provider === 'model_release') return 'Model release receipt';
   return 'Local or external hash';
 };
 
@@ -9017,6 +9760,91 @@ const sha256FileHex = async (file: File): Promise<string> => {
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
 };
+
+const sha256TextHex = async (value: string): Promise<string> => {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(value),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+};
+
+const stableCanonicalJson = (value: unknown): string => {
+  if (value === null) return 'null';
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || !Number.isSafeInteger(value)) {
+      throw new Error('Model release record contains a non-canonical number.');
+    }
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableCanonicalJson).join(',')}]`;
+  }
+  if (typeof value === 'object') {
+    const object = value as Record<string, unknown>;
+    return `{${Object.keys(object)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableCanonicalJson(object[key])}`)
+      .join(',')}}`;
+  }
+  throw new Error('Model release record contains an unsupported value.');
+};
+
+const normalizeOptionalHash = (value: string): string | null => {
+  const normalized = value.trim().toLowerCase();
+  return normalized ? normalized : null;
+};
+
+const buildModelReleaseRecord = (form: ModelReleaseFormState) => ({
+  record_type: 'model_provenance_record',
+  schema_version: '0.1',
+  model: {
+    name: form.modelName.trim(),
+    version: form.modelVersion.trim(),
+    type: form.modelType,
+    release_stage: form.releaseStage,
+  },
+  claim: {
+    claim_type: form.claimType,
+    claim_text: form.claimText.trim(),
+    claim_scope: form.claimScope,
+    subject_type: form.subjectType,
+    subject_identifier: form.subjectIdentifier.trim(),
+    subject_hash: form.subjectHash.trim().toLowerCase(),
+    claim_status: 'submitted',
+  },
+  artifacts: {
+    artifact_manifest_hash: form.artifactManifestHash.trim().toLowerCase(),
+    model_card_hash: form.modelCardHash.trim().toLowerCase(),
+  },
+  data_provenance: {
+    dataset_manifest_hash: form.datasetManifestHash.trim().toLowerCase(),
+  },
+  evaluation: {
+    evaluation_report_hash: form.evaluationReportHash.trim().toLowerCase(),
+    risk_review_hash: normalizeOptionalHash(form.riskReviewHash),
+    known_limitations: form.knownLimitations.trim(),
+  },
+  policy: {
+    policy_id: form.policyId.trim(),
+    policy_version: form.policyVersion.trim(),
+    policy_decision: form.policyDecision,
+  },
+  approval: {
+    final_approver: form.finalApprover.trim(),
+    final_approval_timestamp: form.finalApprovalTimestamp.trim(),
+  },
+  disclosure: {
+    disclosure_mode: form.disclosureMode,
+    verification_policy: form.verificationPolicy.trim(),
+    retention_period: form.retentionPeriod.trim(),
+    private_evidence_stored: true,
+  },
+});
 
 const TEXT_PROOF_EXTENSIONS = new Set([
   'csv',

@@ -96,10 +96,47 @@ export interface GoogleDriveSourceSummary {
   mimeType?: string;
   size?: number;
   modifiedTime?: string;
-  selectedByUserId: string;
-  selectedAt: string;
+  selectedByUserId?: string;
+  selectedAt?: string;
   googleAccountEmail?: string;
 }
+
+export interface ModelReleaseSourceSummary {
+  provider: 'model_release';
+  recordType: 'model_provenance_record';
+  schemaVersion: string;
+  canonicalHash: string;
+  modelName: string;
+  modelVersion: string;
+  modelType: string;
+  releaseStage: string;
+  claimType: string;
+  claimText: string;
+  claimScope: string;
+  subjectType: string;
+  subjectIdentifier: string;
+  subjectHash: string;
+  artifactManifestHash: string;
+  modelCardHash: string;
+  datasetManifestHash: string;
+  evaluationReportHash: string;
+  riskReviewHash?: string;
+  policyId: string;
+  policyVersion: string;
+  policyDecision: string;
+  finalApprover: string;
+  finalApprovalTimestamp: string;
+  disclosureMode: string;
+  verificationPolicy: string;
+  createdByUserId?: string;
+  createdAt?: string;
+  retentionPeriod?: string;
+  knownLimitations?: string;
+}
+
+export type AttestationSourceSummary =
+  | GoogleDriveSourceSummary
+  | ModelReleaseSourceSummary;
 
 export interface AttestationAttemptSummary {
   id: string;
@@ -110,7 +147,7 @@ export interface AttestationAttemptSummary {
   uploadedAt: string | null;
   validatedAt: string | null;
   failedAt: string | null;
-  sourceMetadata: GoogleDriveSourceSummary | null;
+  sourceMetadata: AttestationSourceSummary | null;
 }
 
 export interface AttestationAccessGrantSummary {
@@ -360,15 +397,7 @@ export interface RpcMethods {
         method: 'exact-image-sha256/v1';
         mediaType: 'image/png' | 'image/jpeg';
       };
-      sourceMetadata?: {
-        provider: 'google_drive';
-        fileId: string;
-        fileName: string;
-        mimeType?: string;
-        size?: number;
-        modifiedTime?: string;
-        googleAccountEmail?: string;
-      };
+      sourceMetadata?: AttestationSourceSummary;
     };
     response: AttestationSubmitResult;
   };
