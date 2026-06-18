@@ -799,6 +799,138 @@ describe('public V1 response contract', () => {
     expect(validationJobs).toHaveLength(1);
   });
 
+  it('accepts a model release record hash through the public API', async () => {
+    const owner = await registerOwner();
+    const writeToken = await createApiKey(owner, ['read', 'write']);
+    const projectRes = await app.inject({
+      method: 'POST',
+      url: `/v1/tenants/${owner.tenant.slug}/projects`,
+      headers: {
+        authorization: `Bearer ${writeToken}`,
+        'idempotency-key': 'model-release-project',
+      },
+      payload: {
+        slug: 'model-release-project',
+        name: 'Model Release Project',
+      },
+    });
+    expect(projectRes.statusCode).toBe(201);
+
+    const hash = 'a'.repeat(64);
+    const payload = {
+      label: 'graduation-model-release',
+      sha256: hash,
+      fileName: 'model-release.json',
+      byteSize: 2048,
+      sourceMetadata: {
+        provider: 'model_release',
+        recordType: 'model_provenance_record',
+        schemaVersion: '0.1',
+        canonicalHash: hash,
+        modelName: 'Graduation Model',
+        modelVersion: '2026.06.17',
+        modelType: 'Classifier',
+        releaseStage: 'production',
+        claimType: 'model_release_approved',
+        claimText: 'This model version was approved for production release.',
+        claimScope: 'full_release_package',
+        subjectType: 'model_artifact',
+        subjectIdentifier: 'registry://models/graduation/2026.06.17',
+        subjectHash: hash,
+        artifactManifestHash: hash,
+        modelCardHash: hash,
+        datasetManifestHash: hash,
+        evaluationReportHash: hash,
+        riskReviewHash: hash,
+        policyId: 'AI-GOV-001',
+        policyVersion: '2026.1',
+        policyDecision: 'approved',
+        finalApprover: 'Model Risk Committee',
+        finalApprovalTimestamp: '2026-06-17T14:30:00Z',
+        disclosureMode: 'public_receipt_private_evidence',
+        verificationPolicy: 'verify_model_release_claim',
+        retentionPeriod: '7 years',
+        knownLimitations: 'Requires monitoring for drift.',
+      },
+    };
+
+    const mismatch = await app.inject({
+      method: 'POST',
+      url: `/v1/tenants/${owner.tenant.slug}/projects/model-release-project/attestations`,
+      headers: {
+        authorization: `Bearer ${writeToken}`,
+        'idempotency-key': 'model-release-mismatch',
+      },
+      payload: {
+        ...payload,
+        sourceMetadata: {
+          ...payload.sourceMetadata,
+          canonicalHash: 'b'.repeat(64),
+        },
+      },
+    });
+    expect(mismatch.statusCode).toBe(400);
+    expectErrorEnvelope(mismatch.json(), 'source_metadata_hash_mismatch');
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/v1/tenants/${owner.tenant.slug}/projects/model-release-project/attestations`,
+      headers: {
+        authorization: `Bearer ${writeToken}`,
+        'idempotency-key': 'model-release-1',
+      },
+      payload,
+    });
+    expect(created.statusCode).toBe(202);
+    const body = created.json() as { data: { id: string; state: string } };
+    expect(body.data.state).toBe('validating');
+    expect(validationJobs[0]!.attestationId).toBe(body.data.id);
+
+    const attempts = await dbHandle.sql<
+      { source_metadata: Record<string, unknown> }[]
+    >`
+      SELECT sa.source_metadata
+      FROM public.submission_attempts sa
+      INNER JOIN public.attestations a ON a.id = sa.attestation_id
+      WHERE a.id = ${body.data.id}`;
+    expect(attempts[0]!.source_metadata).toEqual(
+      expect.objectContaining({
+        provider: 'model_release',
+        recordType: 'model_provenance_record',
+        canonicalHash: hash,
+        modelName: 'Graduation Model',
+        modelVersion: '2026.06.17',
+        claimType: 'model_release_approved',
+        policyId: 'AI-GOV-001',
+        createdByUserId: owner.user.id,
+      }),
+    );
+
+    const manifest = JSON.parse([...storedObjects.values()][0]!) as {
+      source_summary: { model_release_record_count?: number };
+      policy_context: { source_provider?: string };
+      leaf_set: Array<{
+        canonical_payload_hash: string;
+        metadata: Record<string, unknown>;
+      }>;
+    };
+    expect(manifest.source_summary.model_release_record_count).toBe(1);
+    expect(manifest.policy_context.source_provider).toBe('model_release');
+    expect(manifest.leaf_set[0]).toMatchObject({
+      canonical_payload_hash: hash,
+      metadata: {
+        source: 'model_release',
+        file_name: 'model-release.json',
+        model_release: expect.objectContaining({
+          record_type: 'model_provenance_record',
+          canonical_hash: hash,
+          model_name: 'Graduation Model',
+          claim_type: 'model_release_approved',
+        }),
+      },
+    });
+  });
+
   it('verifies a hash through the public API and issues a result link', async () => {
     const owner = await registerOwner();
     const writeToken = await createApiKey(owner, ['read', 'write']);

@@ -844,6 +844,174 @@ const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const API_MANIFEST_DEVICE_ID = 'proveria-public-api';
 const API_MANIFEST_PROFILE_ID = 'public-api';
+
+interface ModelReleaseSourceMetadata {
+  [key: string]: unknown;
+  provider: 'model_release';
+  recordType: 'model_provenance_record';
+  schemaVersion: string;
+  canonicalHash: string;
+  modelName: string;
+  modelVersion: string;
+  modelType: string;
+  releaseStage: string;
+  claimType: string;
+  claimText: string;
+  claimScope: string;
+  subjectType: string;
+  subjectIdentifier: string;
+  subjectHash: string;
+  artifactManifestHash: string;
+  modelCardHash: string;
+  datasetManifestHash: string;
+  evaluationReportHash: string;
+  policyId: string;
+  policyVersion: string;
+  policyDecision: string;
+  finalApprover: string;
+  finalApprovalTimestamp: string;
+  disclosureMode: string;
+  verificationPolicy: string;
+  createdByUserId: string;
+  createdAt: string;
+}
+
+const modelReleaseSourceMetadataSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'provider',
+    'recordType',
+    'schemaVersion',
+    'canonicalHash',
+    'modelName',
+    'modelVersion',
+    'modelType',
+    'releaseStage',
+    'claimType',
+    'claimText',
+    'claimScope',
+    'subjectType',
+    'subjectIdentifier',
+    'subjectHash',
+    'artifactManifestHash',
+    'modelCardHash',
+    'datasetManifestHash',
+    'evaluationReportHash',
+    'policyId',
+    'policyVersion',
+    'policyDecision',
+    'finalApprover',
+    'finalApprovalTimestamp',
+    'disclosureMode',
+    'verificationPolicy',
+  ],
+  properties: {
+    provider: { const: 'model_release' },
+    recordType: { const: 'model_provenance_record' },
+    schemaVersion: { type: 'string', minLength: 1, maxLength: 32 },
+    canonicalHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+    modelName: { type: 'string', minLength: 1, maxLength: 256 },
+    modelVersion: { type: 'string', minLength: 1, maxLength: 128 },
+    modelType: { type: 'string', minLength: 1, maxLength: 64 },
+    releaseStage: { type: 'string', minLength: 1, maxLength: 64 },
+    claimType: { type: 'string', minLength: 1, maxLength: 128 },
+    claimText: { type: 'string', minLength: 1, maxLength: 4000 },
+    claimScope: { type: 'string', minLength: 1, maxLength: 128 },
+    subjectType: { type: 'string', minLength: 1, maxLength: 128 },
+    subjectIdentifier: { type: 'string', minLength: 1, maxLength: 512 },
+    subjectHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+    artifactManifestHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+    modelCardHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+    datasetManifestHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+    evaluationReportHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+    riskReviewHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+    policyId: { type: 'string', minLength: 1, maxLength: 256 },
+    policyVersion: { type: 'string', minLength: 1, maxLength: 128 },
+    policyDecision: { type: 'string', minLength: 1, maxLength: 128 },
+    finalApprover: { type: 'string', minLength: 1, maxLength: 256 },
+    finalApprovalTimestamp: { type: 'string', minLength: 1, maxLength: 80 },
+    disclosureMode: { type: 'string', minLength: 1, maxLength: 128 },
+    verificationPolicy: { type: 'string', minLength: 1, maxLength: 128 },
+    retentionPeriod: { type: 'string', maxLength: 256 },
+    knownLimitations: { type: 'string', maxLength: 4000 },
+  },
+} as const;
+
+const modelReleaseSourceMetadataFromBody = (
+  value: unknown,
+  createdByUserId: string,
+): ModelReleaseSourceMetadata | null => {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const required = [
+    raw.recordType,
+    raw.schemaVersion,
+    raw.canonicalHash,
+    raw.modelName,
+    raw.modelVersion,
+    raw.modelType,
+    raw.releaseStage,
+    raw.claimType,
+    raw.claimText,
+    raw.claimScope,
+    raw.subjectType,
+    raw.subjectIdentifier,
+    raw.subjectHash,
+    raw.artifactManifestHash,
+    raw.modelCardHash,
+    raw.datasetManifestHash,
+    raw.evaluationReportHash,
+    raw.policyId,
+    raw.policyVersion,
+    raw.policyDecision,
+    raw.finalApprover,
+    raw.finalApprovalTimestamp,
+    raw.disclosureMode,
+    raw.verificationPolicy,
+  ];
+  if (
+    raw.provider !== 'model_release' ||
+    raw.recordType !== 'model_provenance_record' ||
+    required.some((field) => typeof field !== 'string')
+  ) {
+    return null;
+  }
+  return {
+    provider: 'model_release',
+    recordType: 'model_provenance_record',
+    schemaVersion: raw.schemaVersion as string,
+    canonicalHash: raw.canonicalHash as string,
+    modelName: raw.modelName as string,
+    modelVersion: raw.modelVersion as string,
+    modelType: raw.modelType as string,
+    releaseStage: raw.releaseStage as string,
+    claimType: raw.claimType as string,
+    claimText: raw.claimText as string,
+    claimScope: raw.claimScope as string,
+    subjectType: raw.subjectType as string,
+    subjectIdentifier: raw.subjectIdentifier as string,
+    subjectHash: raw.subjectHash as string,
+    artifactManifestHash: raw.artifactManifestHash as string,
+    modelCardHash: raw.modelCardHash as string,
+    datasetManifestHash: raw.datasetManifestHash as string,
+    evaluationReportHash: raw.evaluationReportHash as string,
+    ...(typeof raw.riskReviewHash === 'string' ? { riskReviewHash: raw.riskReviewHash } : {}),
+    policyId: raw.policyId as string,
+    policyVersion: raw.policyVersion as string,
+    policyDecision: raw.policyDecision as string,
+    finalApprover: raw.finalApprover as string,
+    finalApprovalTimestamp: raw.finalApprovalTimestamp as string,
+    disclosureMode: raw.disclosureMode as string,
+    verificationPolicy: raw.verificationPolicy as string,
+    createdByUserId,
+    createdAt: new Date().toISOString(),
+    ...(typeof raw.retentionPeriod === 'string' ? { retentionPeriod: raw.retentionPeriod } : {}),
+    ...(typeof raw.knownLimitations === 'string'
+      ? { knownLimitations: raw.knownLimitations }
+      : {}),
+  };
+};
 const DEFAULT_PROJECT_TEMPLATE_SLUG = 'general_provenance';
 const EXPORT_JOB_RETENTION_DAYS = 30;
 const EXPORT_JOB_MAX_RETRIES = 3;
@@ -1355,6 +1523,7 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
         mediaType?: string;
         canonicalization?: string;
       };
+      sourceMetadata?: unknown;
     };
   }>(
     '/v1/tenants/:slug/projects/:projectSlug/attestations',
@@ -1383,6 +1552,7 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
                 canonicalization: { type: 'string', maxLength: 100 },
               },
             },
+            sourceMetadata: modelReleaseSourceMetadataSchema,
           },
         },
       },
@@ -1432,6 +1602,9 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
 
       const label = req.body.label.trim();
       const submittedSha256 = normalizeSha256(req.body.sha256);
+      const sourceMetadata = req.body.sourceMetadata
+        ? modelReleaseSourceMetadataFromBody(req.body.sourceMetadata, apiKey.createdByUserId)
+        : null;
       const complianceSha256 = req.body.compliance
         ? normalizeSha256(req.body.compliance.sha256)
         : undefined;
@@ -1457,6 +1630,46 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
                 ),
               ],
             }),
+          );
+      }
+      if (req.body.sourceMetadata && !sourceMetadata) {
+        return reply
+          .code(400)
+          .send(
+            publicError(
+              req.id,
+              'invalid_source_metadata',
+              'sourceMetadata must describe a model release provenance record.',
+              {
+                fieldErrors: [
+                  publicFieldError(
+                    'sourceMetadata',
+                    'sourceMetadata must describe a model release provenance record.',
+                    'invalid',
+                  ),
+                ],
+              },
+            ),
+          );
+      }
+      if (sourceMetadata && sourceMetadata.canonicalHash !== submittedSha256) {
+        return reply
+          .code(400)
+          .send(
+            publicError(
+              req.id,
+              'source_metadata_hash_mismatch',
+              'sourceMetadata.canonicalHash must match sha256.',
+              {
+                fieldErrors: [
+                  publicFieldError(
+                    'sourceMetadata.canonicalHash',
+                    'sourceMetadata.canonicalHash must match sha256.',
+                    'mismatch',
+                  ),
+                ],
+              },
+            ),
           );
       }
       if (complianceSha256 !== undefined && !SHA256_RE.test(complianceSha256)) {
@@ -1593,7 +1806,11 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
 
         const [sub] = await tx
           .insert(submissionAttempts)
-          .values({ attestationId: att.id, state: 'pending' })
+          .values({
+            attestationId: att.id,
+            state: 'pending',
+            sourceMetadata: sourceMetadata ?? {},
+          })
           .returning();
         if (!sub) throw new Error('failed to insert submission attempt');
         return { attestation: att, attempt: sub };
@@ -1604,9 +1821,38 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
           leafType: LEAF_TYPES.fileSha256V1,
           canonicalPayloadHash: new Uint8Array(Buffer.from(submittedSha256, 'hex')),
           metadata: {
-            source: 'public_api',
+            source: sourceMetadata?.provider ?? 'public_api',
             ...(req.body.fileName ? { file_name: req.body.fileName } : {}),
             ...(req.body.byteSize !== undefined ? { byte_size: req.body.byteSize } : {}),
+            ...(sourceMetadata?.provider === 'model_release'
+              ? {
+                  model_release: {
+                    record_type: sourceMetadata.recordType,
+                    schema_version: sourceMetadata.schemaVersion,
+                    canonical_hash: sourceMetadata.canonicalHash,
+                    model_name: sourceMetadata.modelName,
+                    model_version: sourceMetadata.modelVersion,
+                    model_type: sourceMetadata.modelType,
+                    release_stage: sourceMetadata.releaseStage,
+                    claim_type: sourceMetadata.claimType,
+                    claim_scope: sourceMetadata.claimScope,
+                    subject_type: sourceMetadata.subjectType,
+                    subject_identifier: sourceMetadata.subjectIdentifier,
+                    subject_hash: sourceMetadata.subjectHash,
+                    artifact_manifest_hash: sourceMetadata.artifactManifestHash,
+                    model_card_hash: sourceMetadata.modelCardHash,
+                    dataset_manifest_hash: sourceMetadata.datasetManifestHash,
+                    evaluation_report_hash: sourceMetadata.evaluationReportHash,
+                    policy_id: sourceMetadata.policyId,
+                    policy_version: sourceMetadata.policyVersion,
+                    policy_decision: sourceMetadata.policyDecision,
+                    final_approver: sourceMetadata.finalApprover,
+                    final_approval_timestamp: sourceMetadata.finalApprovalTimestamp,
+                    disclosure_mode: sourceMetadata.disclosureMode,
+                    verification_policy: sourceMetadata.verificationPolicy,
+                  },
+                }
+              : {}),
           },
         },
         ...(complianceSha256
@@ -1643,12 +1889,14 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
           submission_channel: 'public_api',
           api_key_id: apiKey.id,
           ...(complianceSha256 ? { compliance_json_attached: true } : {}),
+          ...(sourceMetadata ? { source_provider: sourceMetadata.provider } : {}),
         },
         sourceSummary: {
           file_count: leaves.length,
           shingle_count: 0,
           ocr_page_count: 0,
           ...(complianceSha256 ? { compliance_document_count: 1 } : {}),
+          ...(sourceMetadata?.provider === 'model_release' ? { model_release_record_count: 1 } : {}),
         },
       });
       const signedManifest: Manifest = {
@@ -1694,6 +1942,7 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
           apiKeyId: apiKey.id,
           submissionChannel: 'public_api',
           ...(complianceSha256 ? { complianceJsonAttached: true } : {}),
+          ...(sourceMetadata ? { sourceProvider: sourceMetadata.provider } : {}),
         },
       });
 

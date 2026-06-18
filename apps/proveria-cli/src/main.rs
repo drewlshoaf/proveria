@@ -67,6 +67,8 @@ enum Command {
     Export(ExportCommand),
     /// Compute a local SHA-256 hash.
     Hash(HashCommand),
+    /// Create and submit model release provenance receipts.
+    ModelRelease(ModelReleaseCommand),
     /// Manage projects.
     Projects(ProjectsCommand),
     /// Create a proof record from a file or SHA-256 hash.
@@ -457,6 +459,52 @@ struct ExportCreate {
 #[derive(Args)]
 struct HashCommand {
     #[arg(value_name = "FILE")]
+    file: PathBuf,
+
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    output: OutputFormat,
+}
+
+#[derive(Args)]
+struct ModelReleaseCommand {
+    #[command(subcommand)]
+    command: ModelReleaseSubcommand,
+}
+
+#[derive(Subcommand)]
+enum ModelReleaseSubcommand {
+    /// Write a starter model provenance record JSON file.
+    Init(ModelReleaseInit),
+    /// Canonicalize, hash, and attest a model provenance record.
+    Attest(ModelReleaseAttest),
+    /// Inspect the canonical hash and API metadata for a model provenance record.
+    Inspect(ModelReleaseInspect),
+}
+
+#[derive(Args)]
+struct ModelReleaseInit {
+    #[arg(long, value_name = "FILE")]
+    output: PathBuf,
+}
+
+#[derive(Args)]
+struct ModelReleaseAttest {
+    #[arg(value_name = "MODEL_RELEASE_JSON")]
+    file: PathBuf,
+
+    #[arg(long)]
+    project: String,
+
+    #[arg(long, alias = "label")]
+    name: Option<String>,
+
+    #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+    output: OutputFormat,
+}
+
+#[derive(Args)]
+struct ModelReleaseInspect {
+    #[arg(value_name = "MODEL_RELEASE_JSON")]
     file: PathBuf,
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
@@ -1207,6 +1255,7 @@ async fn main() -> Result<()> {
         Command::Events(command) => run_events(ctx, command).await,
         Command::Export(command) => run_export(ctx, command).await,
         Command::Hash(command) => run_hash(command),
+        Command::ModelRelease(command) => run_model_release(ctx, command).await,
         Command::Projects(command) => run_projects(ctx, command).await,
         Command::Prove(command) => run_prove(ctx, command).await,
         Command::Records(command) => run_records(ctx, command).await,
@@ -2345,6 +2394,287 @@ fn print_attestation_record(attestation: &Attestation) {
     }
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelReleaseSourceMetadata {
+    provider: &'static str,
+    record_type: String,
+    schema_version: String,
+    canonical_hash: String,
+    model_name: String,
+    model_version: String,
+    model_type: String,
+    release_stage: String,
+    claim_type: String,
+    claim_text: String,
+    claim_scope: String,
+    subject_type: String,
+    subject_identifier: String,
+    subject_hash: String,
+    artifact_manifest_hash: String,
+    model_card_hash: String,
+    dataset_manifest_hash: String,
+    evaluation_report_hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    risk_review_hash: Option<String>,
+    policy_id: String,
+    policy_version: String,
+    policy_decision: String,
+    final_approver: String,
+    final_approval_timestamp: String,
+    disclosure_mode: String,
+    verification_policy: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    retention_period: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    known_limitations: Option<String>,
+}
+
+#[derive(Debug)]
+struct ModelReleaseRecordPackage {
+    canonical_json: String,
+    canonical_hash: String,
+    metadata: ModelReleaseSourceMetadata,
+}
+
+async fn run_model_release(ctx: AppContext, command: ModelReleaseCommand) -> Result<()> {
+    match command.command {
+        ModelReleaseSubcommand::Init(input) => run_model_release_init(input),
+        ModelReleaseSubcommand::Inspect(input) => run_model_release_inspect(input),
+        ModelReleaseSubcommand::Attest(input) => run_model_release_attest(ctx, input).await,
+    }
+}
+
+fn run_model_release_init(input: ModelReleaseInit) -> Result<()> {
+    if input.output.exists() {
+        bail!(
+            "{} already exists. Remove it or choose a different --output path.",
+            input.output.display()
+        );
+    }
+    let template = model_release_template();
+    let body = serde_json::to_string_pretty(&template)?;
+    fs::write(&input.output, format!("{body}\n"))
+        .with_context(|| format!("could not write {}", input.output.display()))?;
+    println!("Wrote {}", input.output.display());
+    println!("Edit the model release details, then run:");
+    println!(
+        "proveria model-release attest {} --project <project-slug>",
+        input.output.display()
+    );
+    Ok(())
+}
+
+fn run_model_release_inspect(input: ModelReleaseInspect) -> Result<()> {
+    let package = read_model_release_record(&input.file)?;
+    match input.output {
+        OutputFormat::Text => {
+            println!("record_type: {}", package.metadata.record_type);
+            println!("schema_version: {}", package.metadata.schema_version);
+            println!(
+                "model: {} {}",
+                package.metadata.model_name, package.metadata.model_version
+            );
+            println!("claim_type: {}", package.metadata.claim_type);
+            println!("subject_hash: {}", package.metadata.subject_hash);
+            println!("canonical_hash: {}", package.canonical_hash);
+            println!("canonical_bytes: {}", package.canonical_json.len());
+        }
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "canonicalHash": package.canonical_hash,
+                    "canonicalBytes": package.canonical_json.len(),
+                    "sourceMetadata": package.metadata,
+                }))?
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn run_model_release_attest(ctx: AppContext, input: ModelReleaseAttest) -> Result<()> {
+    let workspace = require_workspace(&ctx)?;
+    let package = read_model_release_record(&input.file)?;
+    let file_name = input
+        .file
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("model release file name is not valid UTF-8"))?
+        .to_string();
+    let label = input.name.unwrap_or_else(|| {
+        format!(
+            "{} {} release",
+            package.metadata.model_name, package.metadata.model_version
+        )
+    });
+
+    let mut body = serde_json::Map::new();
+    body.insert("label".to_string(), json!(label));
+    body.insert("sha256".to_string(), json!(package.canonical_hash));
+    body.insert("fileName".to_string(), json!(file_name));
+    body.insert(
+        "byteSize".to_string(),
+        json!(package.canonical_json.len() as u64),
+    );
+    body.insert(
+        "sourceMetadata".to_string(),
+        serde_json::to_value(&package.metadata)?,
+    );
+
+    let idempotency_key = attestation_idempotency_key(
+        workspace,
+        &input.project,
+        body.get("label")
+            .and_then(|value| value.as_str())
+            .unwrap_or("model-release"),
+        body.get("fileName")
+            .and_then(|value| value.as_str())
+            .unwrap_or("model-release.json"),
+        body.get("sha256")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default(),
+        None,
+    );
+    let response = api_post::<CreateAttestationResponse>(
+        &ctx,
+        &format!(
+            "/v1/tenants/{workspace}/projects/{}/attestations",
+            input.project
+        ),
+        serde_json::Value::Object(body),
+        Some(idempotency_key),
+    )
+    .await?;
+    match input.output {
+        OutputFormat::Text => {
+            println!("Submitted model release receipt");
+            println!("canonical_hash: {}", package.canonical_hash);
+            println!("{}", serde_json::to_string_pretty(&response.data)?);
+        }
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&response)?),
+    }
+    Ok(())
+}
+
+fn read_model_release_record(path: &Path) -> Result<ModelReleaseRecordPackage> {
+    let text =
+        fs::read_to_string(path).with_context(|| format!("could not read {}", path.display()))?;
+    let parsed: serde_json::Value = serde_json::from_str(&text)
+        .with_context(|| format!("could not parse {}", path.display()))?;
+    if !parsed.is_object() {
+        bail!("model release record must be a JSON object");
+    }
+    let canonical = canonical_json(&parsed);
+    let canonical_hash = hex::encode(Sha256::digest(canonical.as_bytes()));
+    let metadata = model_release_metadata(&parsed, canonical_hash.clone())?;
+    Ok(ModelReleaseRecordPackage {
+        canonical_json: canonical,
+        canonical_hash,
+        metadata,
+    })
+}
+
+fn model_release_metadata(
+    record: &serde_json::Value,
+    canonical_hash: String,
+) -> Result<ModelReleaseSourceMetadata> {
+    let record_type = required_string(record, &["record_type"])?;
+    if record_type != "model_provenance_record" {
+        bail!("record_type must be model_provenance_record");
+    }
+    Ok(ModelReleaseSourceMetadata {
+        provider: "model_release",
+        record_type,
+        schema_version: required_string(record, &["schema_version"])?,
+        canonical_hash,
+        model_name: required_string(record, &["model", "name"])?,
+        model_version: required_string(record, &["model", "version"])?,
+        model_type: required_string(record, &["model", "type"])?,
+        release_stage: required_string(record, &["model", "release_stage"])?,
+        claim_type: required_string(record, &["claim", "claim_type"])?,
+        claim_text: required_string(record, &["claim", "claim_text"])?,
+        claim_scope: required_string(record, &["claim", "claim_scope"])?,
+        subject_type: required_string(record, &["claim", "subject_type"])?,
+        subject_identifier: required_string(record, &["claim", "subject_identifier"])?,
+        subject_hash: required_sha256(record, &["claim", "subject_hash"])?,
+        artifact_manifest_hash: required_sha256(record, &["artifacts", "artifact_manifest_hash"])?,
+        model_card_hash: required_sha256(record, &["artifacts", "model_card_hash"])?,
+        dataset_manifest_hash: required_sha256(
+            record,
+            &["data_provenance", "dataset_manifest_hash"],
+        )?,
+        evaluation_report_hash: required_sha256(record, &["evaluation", "evaluation_report_hash"])?,
+        risk_review_hash: optional_sha256(record, &["evaluation", "risk_review_hash"])?,
+        policy_id: required_string(record, &["policy", "policy_id"])?,
+        policy_version: required_string(record, &["policy", "policy_version"])?,
+        policy_decision: required_string(record, &["policy", "policy_decision"])?,
+        final_approver: required_string(record, &["approval", "final_approver"])?,
+        final_approval_timestamp: required_string(
+            record,
+            &["approval", "final_approval_timestamp"],
+        )?,
+        disclosure_mode: required_string(record, &["disclosure", "disclosure_mode"])?,
+        verification_policy: required_string(record, &["disclosure", "verification_policy"])?,
+        retention_period: optional_string(record, &["disclosure", "retention_period"])?,
+        known_limitations: optional_string(record, &["evaluation", "known_limitations"])?,
+    })
+}
+
+fn required_string(record: &serde_json::Value, path: &[&str]) -> Result<String> {
+    let value = value_at_path(record, path)
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("missing required string field {}", path.join(".")))?;
+    Ok(value.to_string())
+}
+
+fn optional_string(record: &serde_json::Value, path: &[&str]) -> Result<Option<String>> {
+    let Some(value) = value_at_path(record, path) else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    let value = value
+        .as_str()
+        .ok_or_else(|| anyhow!("{} must be a string", path.join(".")))?
+        .trim();
+    if value.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(value.to_string()))
+    }
+}
+
+fn required_sha256(record: &serde_json::Value, path: &[&str]) -> Result<String> {
+    let value = required_string(record, path)?;
+    normalized_sha256(&value)
+        .with_context(|| format!("{} must be a SHA-256 hex string", path.join(".")))
+}
+
+fn optional_sha256(record: &serde_json::Value, path: &[&str]) -> Result<Option<String>> {
+    let Some(value) = optional_string(record, path)? else {
+        return Ok(None);
+    };
+    normalized_sha256(&value)
+        .map(Some)
+        .with_context(|| format!("{} must be a SHA-256 hex string", path.join(".")))
+}
+
+fn value_at_path<'a>(
+    record: &'a serde_json::Value,
+    path: &[&str],
+) -> Option<&'a serde_json::Value> {
+    let mut current = record;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    Some(current)
+}
+
 async fn run_prove(ctx: AppContext, command: ProveCommand) -> Result<()> {
     match command.command {
         Some(ProveSubcommand::Hash(input)) => {
@@ -3187,6 +3517,160 @@ fn compliance_json_metadata(path: &Path) -> Result<ComplianceJsonMetadata> {
         media_type: "application/json",
         canonicalization: "json-stable-v1",
     })
+}
+
+fn model_release_template() -> serde_json::Value {
+    json!({
+        "record_type": "model_provenance_record",
+        "schema_version": "0.1",
+        "model": {
+            "name": "Graduation Model",
+            "version": "2026.06",
+            "type": "classifier",
+            "base_model": "",
+            "base_model_provider": "",
+            "parent_receipt_ids": [],
+            "owner_team": "Model Governance",
+            "model_owner": "model-owner@example.com",
+            "intended_use": "Predict graduation readiness for approved internal workflows.",
+            "prohibited_uses": "Do not use for automated adverse decisions without human review.",
+            "release_stage": "production"
+        },
+        "claim": {
+            "claim_id": "",
+            "claim_type": "model_release_approved",
+            "claim_text": "This model version was approved for production release under the attached governance policy.",
+            "claim_scope": "full_release_package",
+            "subject_type": "model_artifact",
+            "subject_identifier": "registry://models/graduation/2026.06",
+            "subject_hash": sample_hash("subject")
+        },
+        "artifacts": {
+            "weights_hash": sample_hash("weights"),
+            "config_hash": sample_hash("config"),
+            "tokenizer_hash": sample_hash("tokenizer"),
+            "adapter_hashes": [],
+            "model_card_hash": sample_hash("model-card"),
+            "container_image_digest": "",
+            "source_repository_url": "",
+            "source_commit_sha": "",
+            "sbom_reference": "",
+            "artifact_manifest_hash": sample_hash("artifact-manifest")
+        },
+        "data_provenance": {
+            "dataset_manifest_ref": "s3://example-bucket/model-release/dataset-manifest.json",
+            "dataset_manifest_hash": sample_hash("dataset-manifest"),
+            "training_datasets": [
+                {
+                    "dataset_name": "graduation-training",
+                    "dataset_version": "2026.06",
+                    "dataset_hash": sample_hash("training-dataset"),
+                    "source_system": "warehouse",
+                    "source_owner": "Data Governance",
+                    "collection_date_range": "2025-01-01/2026-05-31",
+                    "license_contract_reference": "internal-policy://data-use/graduation",
+                    "inclusion_status": "Included in training",
+                    "notes": ""
+                }
+            ],
+            "excluded_datasets": [],
+            "data_classification": "confidential",
+            "contains_pii": true,
+            "contains_phi": false,
+            "contains_customer_data": false,
+            "consent_or_contract_basis": "Internal educational records governance approval.",
+            "retention_rule": "7 years"
+        },
+        "training": {
+            "training_run_id": "train-2026-06-001",
+            "training_code_commit": "0000000000000000000000000000000000000000",
+            "training_environment": "internal-ml-platform",
+            "training_started_at": "2026-06-01T13:00:00Z",
+            "training_ended_at": "2026-06-01T17:30:00Z",
+            "framework": "scikit-learn",
+            "hyperparameter_manifest_hash": sample_hash("hyperparameters"),
+            "random_seed": "42",
+            "trainer": "ml-platform",
+            "training_run_manifest_hash": sample_hash("training-run")
+        },
+        "evaluation": {
+            "evaluation_report_ref": "s3://example-bucket/model-release/evaluation-report.pdf",
+            "evaluation_report_hash": sample_hash("evaluation-report"),
+            "evaluation_suite": "graduation-model-release-v1",
+            "evaluation_result": "pass",
+            "required_thresholds_met": true,
+            "risk_review_hash": sample_hash("risk-review"),
+            "known_limitations": "Performance should be monitored for drift across cohorts.",
+            "safety_review_hash": "",
+            "bias_fairness_review_hash": "",
+            "security_review_hash": ""
+        },
+        "policy": {
+            "policy_id": "AI-GOV-001",
+            "policy_version": "2026.1",
+            "policy_template": "production-model-release",
+            "required_controls": ["model_card", "dataset_manifest", "evaluation_report", "risk_review", "approval_record"],
+            "required_evidence_checklist": [
+                { "control": "model_card", "status": "complete" },
+                { "control": "dataset_manifest", "status": "complete" },
+                { "control": "evaluation_report", "status": "complete" },
+                { "control": "risk_review", "status": "complete" },
+                { "control": "approval_record", "status": "complete" }
+            ],
+            "policy_decision": "approved",
+            "exceptions": []
+        },
+        "approval": {
+            "submitted_by": "model-owner@example.com",
+            "submitted_at": "2026-06-02T14:00:00Z",
+            "model_owner_approval": "model-owner@example.com 2026-06-02T15:00:00Z",
+            "compliance_review": "compliance@example.com 2026-06-03T15:00:00Z",
+            "security_review": "security@example.com 2026-06-03T16:00:00Z",
+            "data_governance_review": "data-governance@example.com 2026-06-03T17:00:00Z",
+            "legal_review": "",
+            "final_approver": "Model Risk Committee",
+            "final_approval_timestamp": "2026-06-04T18:00:00Z",
+            "approval_record_hash": sample_hash("approval-record")
+        },
+        "deployment": {
+            "deployment_authorized": true,
+            "deployment_environment": "production",
+            "deployment_target": "https://models.example.com/graduation/2026.06",
+            "deployment_manifest_hash": sample_hash("deployment-manifest"),
+            "release_version": "2026.06",
+            "rollout_plan": "Limited rollout followed by full production release after monitoring review.",
+            "rollback_plan": "Revert endpoint alias to prior approved model receipt.",
+            "monitoring_plan_ref": "s3://example-bucket/model-release/monitoring-plan.pdf",
+            "deployed_at": ""
+        },
+        "disclosure": {
+            "disclosure_mode": "public_receipt_private_evidence",
+            "public_fields": ["model.name", "model.version", "claim.claim_type", "policy.policy_id"],
+            "private_evidence_stored": true,
+            "evidence_access_rule": "request_based",
+            "redaction_profile": "model-release-standard",
+            "verification_policy": "verify_model_release_claim",
+            "retention_period": "7 years"
+        },
+        "receipt": {
+            "receipt_id": "",
+            "claim_id": "",
+            "evidence_package_id": "",
+            "evidence_root_hash": "",
+            "receipt_hash": "",
+            "signer_id": "",
+            "signature": "",
+            "signature_algorithm": "",
+            "timestamp": "",
+            "verification_url": "",
+            "supersedes_receipt_id": "",
+            "revocation_reason": ""
+        }
+    })
+}
+
+fn sample_hash(label: &str) -> String {
+    hex::encode(Sha256::digest(label.as_bytes()))
 }
 
 fn canonical_json(value: &serde_json::Value) -> String {
@@ -4308,6 +4792,37 @@ mod tests {
         assert_eq!(metadata.canonicalization, "json-stable-v1");
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn model_release_template_extracts_api_metadata() {
+        let template = model_release_template();
+        let canonical = canonical_json(&template);
+        let canonical_hash = hex::encode(Sha256::digest(canonical.as_bytes()));
+
+        let metadata =
+            model_release_metadata(&template, canonical_hash.clone()).expect("builds metadata");
+
+        assert_eq!(metadata.provider, "model_release");
+        assert_eq!(metadata.record_type, "model_provenance_record");
+        assert_eq!(metadata.schema_version, "0.1");
+        assert_eq!(metadata.canonical_hash, canonical_hash);
+        assert_eq!(metadata.model_name, "Graduation Model");
+        assert_eq!(metadata.model_version, "2026.06");
+        assert_eq!(metadata.claim_type, "model_release_approved");
+        assert_eq!(metadata.policy_id, "AI-GOV-001");
+        assert_eq!(metadata.verification_policy, "verify_model_release_claim");
+        assert_eq!(metadata.retention_period.as_deref(), Some("7 years"));
+    }
+
+    #[test]
+    fn model_release_metadata_rejects_missing_required_fields() {
+        let mut template = model_release_template();
+        template["claim"]["subject_hash"] = json!("");
+
+        let err = model_release_metadata(&template, "a".repeat(64)).expect_err("rejects record");
+
+        assert!(err.to_string().contains("claim.subject_hash"));
     }
 
     #[test]
