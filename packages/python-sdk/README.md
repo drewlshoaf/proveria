@@ -118,6 +118,61 @@ Compatibility aliases such as `client.create_hash_attestation(...)`,
 `client.get_attestation(...)`, and `client.verify_hash(...)` remain available
 for the original spike API.
 
+## Model Release Receipts
+
+Use `create_model_release` when you have a claim-backed model provenance record
+dict. The SDK canonicalizes the JSON, hashes it locally, extracts the model
+release metadata, and sends only hash metadata to the public API.
+
+```python
+model_release_record = {
+    "record_type": "model_provenance_record",
+    "schema_version": "0.1",
+    "model": {
+        "name": "Graduation Model",
+        "version": "2026.06",
+        "type": "classifier",
+        "release_stage": "production",
+    },
+    "claim": {
+        "claim_type": "model_release_approved",
+        "claim_text": "This model version was approved for production release.",
+        "claim_scope": "full_release_package",
+        "subject_type": "model_artifact",
+        "subject_identifier": "registry://models/graduation/2026.06",
+        "subject_hash": "b" * 64,
+    },
+    "artifacts": {
+        "artifact_manifest_hash": "c" * 64,
+        "model_card_hash": "d" * 64,
+    },
+    "data_provenance": {"dataset_manifest_hash": "e" * 64},
+    "evaluation": {"evaluation_report_hash": "f" * 64},
+    "policy": {
+        "policy_id": "AI-GOV-001",
+        "policy_version": "2026.1",
+        "policy_decision": "approved",
+    },
+    "approval": {
+        "final_approver": "Model Risk Committee",
+        "final_approval_timestamp": "2026-06-04T18:00:00Z",
+    },
+    "disclosure": {
+        "disclosure_mode": "public_receipt_private_evidence",
+        "verification_policy": "verify_model_release_claim",
+    },
+}
+
+model_release = client.attestations.create_model_release(
+    project="evaluation-evidence",
+    record=model_release_record,
+    label="Graduation Model 2026.06 release",
+    idempotency_key="model-release-2026-06",
+)
+
+print(model_release["data"]["id"])
+```
+
 ## Verifier Access
 
 ```python

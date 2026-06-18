@@ -1,9 +1,10 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import {
   type ApiEnvelope,
   type ApiKeyCredential,
   type Attestation,
+  type CreateModelReleaseAttestationInput,
   type CreateProjectInput,
   type CreateWebhookEndpointInput,
   type DocsConfig,
@@ -21,6 +22,7 @@ import {
   type ListEventsOptions,
   type ListProjectsOptions,
   type ListWebhooksOptions,
+  type ModelReleaseSourceMetadata,
   type OpenApiDocument,
   type PaginatedApiEnvelope,
   type Project,
@@ -353,9 +355,28 @@ class AttestationsApi {
           ...(input.description ? { description: input.description } : {}),
           ...(input.fileName ? { fileName: input.fileName } : {}),
           ...(input.byteSize !== undefined ? { byteSize: input.byteSize } : {}),
+          ...(input.sourceMetadata ? { sourceMetadata: input.sourceMetadata } : {}),
         },
       },
     );
+  }
+
+  async createModelRelease(
+    input: CreateModelReleaseAttestationInput,
+  ): Promise<ApiEnvelope<Attestation>> {
+    const canonical = canonicalJsonStable(input.record);
+    const canonicalHash = sha256HexString(canonical);
+    const sourceMetadata = modelReleaseSourceMetadata(input.record, canonicalHash);
+    return this.createHash({
+      project: input.project,
+      label:
+        input.label ?? `${sourceMetadata.modelName} ${sourceMetadata.modelVersion} release`,
+      sha256: canonicalHash,
+      fileName: input.fileName ?? 'model-release.json',
+      byteSize: new TextEncoder().encode(canonical).byteLength,
+      sourceMetadata,
+      idempotencyKey: input.idempotencyKey,
+    });
   }
 
   async get(id: string): Promise<ApiEnvelope<Attestation>> {
@@ -604,6 +625,106 @@ const assertSha256 = (value: string): void => {
   if (!/^[0-9a-f]{64}$/.test(value)) {
     throw new Error('Expected a 64-character SHA-256 hex string.');
   }
+};
+
+const sha256HexString = (value: string): string => createHash('sha256').update(value).digest('hex');
+
+const canonicalJsonStable = (value: unknown): string => {
+  if (value === null) return 'null';
+  if (typeof value === 'boolean' || typeof value === 'number') return JSON.stringify(value);
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJsonStable).join(',')}]`;
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    return `{${entries
+      .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJsonStable(child)}`)
+      .join(',')}}`;
+  }
+  throw new Error(`Cannot canonicalize ${typeof value} in model release record.`);
+};
+
+const modelReleaseSourceMetadata = (
+  record: Record<string, unknown>,
+  canonicalHash: string,
+): ModelReleaseSourceMetadata => {
+  const recordType = requiredString(record, ['record_type']);
+  if (recordType !== 'model_provenance_record') {
+    throw new Error('record_type must be model_provenance_record.');
+  }
+  const riskReviewHash = optionalSha256(record, ['evaluation', 'risk_review_hash']);
+  const retentionPeriod = optionalString(record, ['disclosure', 'retention_period']);
+  const knownLimitations = optionalString(record, ['evaluation', 'known_limitations']);
+  return {
+    provider: 'model_release',
+    recordType: 'model_provenance_record',
+    schemaVersion: requiredString(record, ['schema_version']),
+    canonicalHash,
+    modelName: requiredString(record, ['model', 'name']),
+    modelVersion: requiredString(record, ['model', 'version']),
+    modelType: requiredString(record, ['model', 'type']),
+    releaseStage: requiredString(record, ['model', 'release_stage']),
+    claimType: requiredString(record, ['claim', 'claim_type']),
+    claimText: requiredString(record, ['claim', 'claim_text']),
+    claimScope: requiredString(record, ['claim', 'claim_scope']),
+    subjectType: requiredString(record, ['claim', 'subject_type']),
+    subjectIdentifier: requiredString(record, ['claim', 'subject_identifier']),
+    subjectHash: requiredSha256(record, ['claim', 'subject_hash']),
+    artifactManifestHash: requiredSha256(record, ['artifacts', 'artifact_manifest_hash']),
+    modelCardHash: requiredSha256(record, ['artifacts', 'model_card_hash']),
+    datasetManifestHash: requiredSha256(record, ['data_provenance', 'dataset_manifest_hash']),
+    evaluationReportHash: requiredSha256(record, ['evaluation', 'evaluation_report_hash']),
+    ...(riskReviewHash ? { riskReviewHash } : {}),
+    policyId: requiredString(record, ['policy', 'policy_id']),
+    policyVersion: requiredString(record, ['policy', 'policy_version']),
+    policyDecision: requiredString(record, ['policy', 'policy_decision']),
+    finalApprover: requiredString(record, ['approval', 'final_approver']),
+    finalApprovalTimestamp: requiredString(record, ['approval', 'final_approval_timestamp']),
+    disclosureMode: requiredString(record, ['disclosure', 'disclosure_mode']),
+    verificationPolicy: requiredString(record, ['disclosure', 'verification_policy']),
+    ...(retentionPeriod ? { retentionPeriod } : {}),
+    ...(knownLimitations ? { knownLimitations } : {}),
+  };
+};
+
+const valueAtPath = (record: Record<string, unknown>, path: string[]): unknown => {
+  let current: unknown = record;
+  for (const segment of path) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
+};
+
+const requiredString = (record: Record<string, unknown>, path: string[]): string => {
+  const value = valueAtPath(record, path);
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`Missing required string field ${path.join('.')}.`);
+  }
+  return value.trim();
+};
+
+const optionalString = (record: Record<string, unknown>, path: string[]): string | undefined => {
+  const value = valueAtPath(record, path);
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') throw new Error(`${path.join('.')} must be a string.`);
+  const trimmed = value.trim();
+  return trimmed || undefined;
+};
+
+const requiredSha256 = (record: Record<string, unknown>, path: string[]): string => {
+  const value = normalizeSha256(requiredString(record, path));
+  assertSha256(value);
+  return value;
+};
+
+const optionalSha256 = (record: Record<string, unknown>, path: string[]): string | undefined => {
+  const value = optionalString(record, path);
+  if (!value) return undefined;
+  const normalized = normalizeSha256(value);
+  assertSha256(normalized);
+  return normalized;
 };
 
 const evidenceExportQuery = (filters: EvidenceExportFilters): string => {
