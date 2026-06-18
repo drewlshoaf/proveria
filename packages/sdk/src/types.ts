@@ -183,9 +183,13 @@ export interface CreateHashAttestationInput {
   description?: string;
   fileName?: string;
   byteSize?: number;
-  sourceMetadata?: ModelReleaseSourceMetadata;
+  sourceMetadata?: AttestationSourceMetadata;
   idempotencyKey?: string;
 }
+
+export type AttestationSourceMetadata =
+  | ModelReleaseSourceMetadata
+  | DatasetInventorySourceMetadata;
 
 export interface ModelReleaseSourceMetadata {
   provider: 'model_release';
@@ -219,6 +223,31 @@ export interface ModelReleaseSourceMetadata {
 }
 
 export interface CreateModelReleaseAttestationInput {
+  project: string;
+  record: Record<string, unknown>;
+  label?: string;
+  fileName?: string;
+  idempotencyKey?: string;
+}
+
+export interface DatasetInventorySourceMetadata {
+  provider: 'dataset_inventory';
+  recordType: 'dataset_inventory_record';
+  schemaVersion: string;
+  canonicalHash: string;
+  datasetName: string;
+  datasetVersion: string;
+  inventoryScope: string;
+  fileCount: number;
+  totalBytes: number;
+  datasetRootHash: string;
+  dataClassification: string;
+  sourceOwner?: string;
+  licenseUsageBasis?: string;
+  retentionRule?: string;
+}
+
+export interface CreateDatasetInventoryAttestationInput {
   project: string;
   record: Record<string, unknown>;
   label?: string;

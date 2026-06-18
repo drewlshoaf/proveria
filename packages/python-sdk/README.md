@@ -118,6 +118,47 @@ Compatibility aliases such as `client.create_hash_attestation(...)`,
 `client.get_attestation(...)`, and `client.verify_hash(...)` remain available
 for the original spike API.
 
+## Dataset Inventory Receipts
+
+Use `create_dataset_inventory` when you have a canonical dataset inventory
+record dict. The SDK canonicalizes the JSON, hashes it locally, extracts
+dataset summary metadata, and sends only hash metadata to the public API.
+
+```python
+dataset_inventory_record = {
+    "record_type": "dataset_inventory_record",
+    "schema_version": "0.1",
+    "dataset": {
+        "name": "Training Dataset",
+        "version": "2026.06",
+        "inventory_scope": "folder",
+        "source_owner": "Data Governance",
+        "license_usage_basis": "Internal governed dataset approval.",
+        "data_classification": "confidential",
+        "retention_rule": "7 years",
+    },
+    "summary": {
+        "file_count": 2,
+        "total_bytes": 1536,
+        "dataset_root_hash": "b" * 64,
+        "hash_algorithm": "sha256",
+    },
+    "files": [
+        {"path": "train/a.jsonl", "sha256": "c" * 64, "byte_size": 1024},
+        {"path": "eval/b.jsonl", "sha256": "d" * 64, "byte_size": 512},
+    ],
+}
+
+dataset_inventory = client.attestations.create_dataset_inventory(
+    project="evaluation-evidence",
+    record=dataset_inventory_record,
+    label="Training Dataset 2026.06 inventory",
+    idempotency_key="dataset-inventory-2026-06",
+)
+
+print(dataset_inventory["data"]["id"])
+```
+
 ## Model Release Receipts
 
 Use `create_model_release` when you have a claim-backed model provenance record

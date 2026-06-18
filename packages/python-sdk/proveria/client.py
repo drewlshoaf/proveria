@@ -216,6 +216,23 @@ class ProveriaClient:
             idempotency_key=idempotency_key,
         )
 
+    def create_dataset_inventory_attestation(
+        self,
+        *,
+        project: str,
+        record: JsonObject,
+        label: str | None = None,
+        file_name: str = "dataset-inventory.json",
+        idempotency_key: str | None = None,
+    ) -> JsonObject:
+        return self.attestations.create_dataset_inventory(
+            project=project,
+            record=record,
+            label=label,
+            file_name=file_name,
+            idempotency_key=idempotency_key,
+        )
+
     def get_attestation(self, attestation_id: str) -> JsonObject:
         return self.attestations.get(attestation_id)
 
@@ -428,6 +445,28 @@ class AttestationsApi:
         return self.create_hash(
             project=project,
             label=label or f"{source_metadata['modelName']} {source_metadata['modelVersion']} release",
+            sha256=canonical_hash,
+            file_name=file_name,
+            byte_size=len(canonical.encode("utf-8")),
+            source_metadata=source_metadata,
+            idempotency_key=idempotency_key,
+        )
+
+    def create_dataset_inventory(
+        self,
+        *,
+        project: str,
+        record: JsonObject,
+        label: str | None = None,
+        file_name: str = "dataset-inventory.json",
+        idempotency_key: str | None = None,
+    ) -> JsonObject:
+        canonical = _canonical_json(record)
+        canonical_hash = _sha256(canonical.encode("utf-8")).hexdigest()
+        source_metadata = _dataset_inventory_source_metadata(record, canonical_hash)
+        return self.create_hash(
+            project=project,
+            label=label or f"{source_metadata['datasetName']} {source_metadata['datasetVersion']} inventory",
             sha256=canonical_hash,
             file_name=file_name,
             byte_size=len(canonical.encode("utf-8")),
@@ -807,6 +846,35 @@ def _model_release_source_metadata(record: JsonObject, canonical_hash: str) -> J
     return metadata
 
 
+def _dataset_inventory_source_metadata(record: JsonObject, canonical_hash: str) -> JsonObject:
+    record_type = _required_string(record, ("record_type",))
+    if record_type != "dataset_inventory_record":
+        raise ValueError("record_type must be dataset_inventory_record")
+    metadata: JsonObject = {
+        "provider": "dataset_inventory",
+        "recordType": "dataset_inventory_record",
+        "schemaVersion": _required_string(record, ("schema_version",)),
+        "canonicalHash": canonical_hash,
+        "datasetName": _required_string(record, ("dataset", "name")),
+        "datasetVersion": _required_string(record, ("dataset", "version")),
+        "inventoryScope": _required_string(record, ("dataset", "inventory_scope")),
+        "fileCount": _required_int(record, ("summary", "file_count")),
+        "totalBytes": _required_int(record, ("summary", "total_bytes")),
+        "datasetRootHash": _required_sha256(record, ("summary", "dataset_root_hash")),
+        "dataClassification": _required_string(record, ("dataset", "data_classification")),
+    }
+    source_owner = _optional_string(record, ("dataset", "source_owner"))
+    if source_owner:
+        metadata["sourceOwner"] = source_owner
+    license_usage_basis = _optional_string(record, ("dataset", "license_usage_basis"))
+    if license_usage_basis:
+        metadata["licenseUsageBasis"] = license_usage_basis
+    retention_rule = _optional_string(record, ("dataset", "retention_rule"))
+    if retention_rule:
+        metadata["retentionRule"] = retention_rule
+    return metadata
+
+
 def _value_at_path(record: JsonObject, path: tuple[str, ...]) -> Any:
     current: Any = record
     for segment in path:
@@ -830,6 +898,13 @@ def _optional_string(record: JsonObject, path: tuple[str, ...]) -> str | None:
     if not isinstance(value, str):
         raise ValueError(f"{'.'.join(path)} must be a string")
     return value.strip() or None
+
+
+def _required_int(record: JsonObject, path: tuple[str, ...]) -> int:
+    value = _value_at_path(record, path)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"missing required non-negative integer field {'.'.join(path)}")
+    return value
 
 
 def _required_sha256(record: JsonObject, path: tuple[str, ...]) -> str:
