@@ -180,6 +180,34 @@ The compliance JSON content itself is not uploaded. Its hash is committed as a
 second file leaf in the same attestation manifest, so the final receipt covers
 both the primary file hash and the compliance document hash.
 
+## Create A Model Release Receipt
+
+Use this path for API-first model governance workflows. The starter file is a
+claim-backed provenance record, not a generic model metadata blob.
+
+```bash
+proveria model-release init --output ./model-release.json
+```
+
+Edit the record, then inspect the canonical hash that will be committed:
+
+```bash
+proveria model-release inspect ./model-release.json
+```
+
+Submit the release record hash as an attestation:
+
+```bash
+proveria model-release attest ./model-release.json \
+  --project evaluation-evidence \
+  --name "Graduation Model 2026.06 release"
+```
+
+The CLI canonicalizes the JSON locally, computes the SHA-256 of the canonical
+record, extracts the model release claim metadata, and sends only hash metadata
+to the public API. The model release JSON body stays local unless you separately
+store it in your own evidence repository.
+
 ## Compliance Receipt QA Flow
 
 Use this sequence when testing the CLI compliance workflow end to end. It keeps
@@ -355,6 +383,9 @@ proveria prove <sha256> --project <slug> --name <name> [--file-name <name>] [--b
 proveria prove <file> --project <slug> [--name <name>] [--compliance-json <path>]
 proveria prove hash <sha256> --project <slug> --name <name> [--file-name <name>] [--byte-size <bytes>] [--compliance-json <path>]
 proveria prove file <file> --project <slug> [--name <name>] [--compliance-json <path>]
+proveria model-release init --output <file>
+proveria model-release inspect <file> [--output json]
+proveria model-release attest <file> --project <slug> [--name <name>] [--output json]
 proveria records get <attestation-id>
 proveria receipt <attestation-id> [--json] [--pdf] [--output <dir>]
 proveria access grant <attestation-id> --email <email> [--message <text>]

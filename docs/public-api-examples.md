@@ -108,6 +108,62 @@ curl -sS "$PROVERIA_API_URL/v1/tenants/$PROVERIA_WORKSPACE/projects/evaluation-e
 The response starts in `validating`. Poll the attestation until `state` becomes
 `confirmed`.
 
+## Create A Model Release Attestation
+
+For model release provenance, canonicalize the model release record locally,
+hash the canonical JSON, and send the hash plus source metadata. Do not send
+the model release record body itself.
+
+```bash
+curl -sS "$PROVERIA_API_URL/v1/tenants/$PROVERIA_WORKSPACE/projects/evaluation-evidence/attestations" \
+  -H "Authorization: Bearer $PROVERIA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: attestation-model-release-2026-06-001" \
+  -d '{
+    "label": "Graduation Model 2026.06 release",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "fileName": "model-release.json",
+    "byteSize": 4096,
+    "sourceMetadata": {
+      "provider": "model_release",
+      "recordType": "model_provenance_record",
+      "schemaVersion": "0.1",
+      "canonicalHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "modelName": "Graduation Model",
+      "modelVersion": "2026.06",
+      "modelType": "classifier",
+      "releaseStage": "production",
+      "claimType": "model_release_approved",
+      "claimText": "This model version was approved for production release.",
+      "claimScope": "full_release_package",
+      "subjectType": "model_artifact",
+      "subjectIdentifier": "registry://models/graduation/2026.06",
+      "subjectHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "artifactManifestHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "modelCardHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "datasetManifestHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "evaluationReportHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "riskReviewHash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "policyId": "AI-GOV-001",
+      "policyVersion": "2026.1",
+      "policyDecision": "approved",
+      "finalApprover": "Model Risk Committee",
+      "finalApprovalTimestamp": "2026-06-04T18:00:00Z",
+      "disclosureMode": "public_receipt_private_evidence",
+      "verificationPolicy": "verify_model_release_claim",
+      "retentionPeriod": "7 years"
+    }
+  }'
+```
+
+The `sourceMetadata.canonicalHash` value must match `sha256`. The recommended
+way to create this payload is:
+
+```bash
+proveria model-release init --output ./model-release.json
+proveria model-release attest ./model-release.json --project evaluation-evidence
+```
+
 ```bash
 curl -sS "$PROVERIA_API_URL/v1/tenants/$PROVERIA_WORKSPACE/attestations/<attestation-id>" \
   -H "Authorization: Bearer $PROVERIA_API_KEY"

@@ -62,6 +62,9 @@ proveria prove <sha256> --project evaluation-evidence --name external-proof
 proveria prove <sha256> --project evaluation-evidence --name external-proof --file-name invoice.pdf --byte-size 1234 --compliance-json docs/examples/compliance-controls.json
 proveria prove ./example.pdf --project evaluation-evidence
 proveria prove ./example.pdf --project evaluation-evidence --compliance-json docs/examples/compliance-controls.json
+proveria model-release init --output ./model-release.json
+proveria model-release inspect ./model-release.json
+proveria model-release attest ./model-release.json --project evaluation-evidence --name "Graduation Model release"
 proveria records get <attestation-id>
 proveria receipt <attestation-id>
 proveria receipt <attestation-id> --json --pdf --output ./receipts
@@ -125,6 +128,24 @@ The final attestation manifest contains a second file leaf with metadata like:
 ```
 
 The manifest should not contain the compliance JSON document body.
+
+## Model Release Receipts
+
+`proveria model-release init` writes a claim-backed model provenance record
+template with deterministic placeholder hashes for required evidence fields.
+Edit the JSON, then inspect or attest it:
+
+```bash
+proveria model-release init --output ./model-release.json
+proveria model-release inspect ./model-release.json
+proveria model-release attest ./model-release.json \
+  --project evaluation-evidence \
+  --name "Graduation Model 2026.06 release"
+```
+
+The CLI canonicalizes the JSON with stable sorted keys, hashes the canonical
+record locally, and sends only the record hash plus model release metadata to
+the public API. The JSON body itself is not uploaded.
 
 ## Release Smoke
 
