@@ -1,0 +1,108 @@
+{
+  "record_type": "model_card_provenance_attachment",
+  "schema_version": "0.1",
+  "attachment": {
+    "attachment_id": "model_card_attachment_graduation_2026_06",
+    "title": "Graduation Model 2026.06 provenance attachment",
+    "status": "ready_for_review",
+    "created_at": "2026-06-18T15:00:00Z",
+    "prepared_by": "Model Governance",
+    "model_card_ref": "model-cards/graduation-model/2026.06/model-card.md",
+    "model_card_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "model": {
+    "name": "Graduation Model",
+    "version": "2026.06",
+    "type": "classifier",
+    "release_stage": "production",
+    "owner_team": "Student Success AI",
+    "model_owner": "model-owner@example.com",
+    "intended_use": "Predict graduation-risk bands for internal student-success workflows.",
+    "prohibited_uses": "Do not use for automated adverse decisions or public ranking."
+  },
+  "model_release_receipt": {
+    "attestation_id": "att_model_release_replace_me",
+    "label": "Graduation Model 2026.06 release",
+    "receipt_url": "http://127.0.0.1:3001/v/vrf_model_release_replace_me",
+    "canonical_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "claim_type": "model_release_approved",
+    "claim_text": "This model version was approved for production release."
+  },
+  "dataset_receipts": [
+    {
+      "role": "training_inventory",
+      "attestation_id": "att_training_inventory_replace_me",
+      "label": "Training Dataset 2026.06 inventory",
+      "receipt_url": "http://127.0.0.1:3001/v/vrf_training_inventory_replace_me",
+      "dataset_name": "Training Dataset",
+      "dataset_version": "2026.06",
+      "dataset_root_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "data_classification": "confidential"
+    },
+    {
+      "role": "training_revision",
+      "attestation_id": "att_training_revision_replace_me",
+      "label": "Training Dataset 2026.05 to 2026.06 revision",
+      "receipt_url": "http://127.0.0.1:3001/v/vrf_training_revision_replace_me",
+      "previous_dataset_version": "2026.05",
+      "next_dataset_version": "2026.06",
+      "revision_root_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "new_file_count": 18,
+      "changed_file_count": 7,
+      "removed_file_count": 3,
+      "unchanged_file_count": 1222
+    }
+  ],
+  "evidence_receipts": {
+    "evaluation_report": {
+      "hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "ref": "evaluations/graduation-model/2026.06/evaluation-report.pdf",
+      "summary": "Passed required graduation-risk benchmark thresholds."
+    },
+    "risk_review": {
+      "hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "ref": "risk/graduation-model/2026.06/risk-review.pdf",
+      "summary": "Approved with monitoring controls."
+    },
+    "policy": {
+      "policy_id": "AI-GOV-001",
+      "policy_version": "2026.1",
+      "policy_decision": "approved"
+    },
+    "approval_record_hash": "111111111111111111111111111111111111111111111111111111111111"
+  },
+  "audit_packages": [
+    {
+      "type": "licensed_content_audit_package",
+      "audit_id": "audit_newswire_2026_q2",
+      "package_hash": "222222222222222222222222222222222222222222222222222222222222",
+      "ref": "docs/examples/licensed-content-audit-package.json",
+      "status": "ready_for_rights_holder_review"
+    }
+  ],
+  "verification": {
+    "public_verification_summary": "Public viewers can verify the model release receipt and referenced dataset receipt hashes. Private evidence remains behind scoped access controls.",
+    "public_fields": [
+      "model.name",
+      "model.version",
+      "model_release_receipt",
+      "dataset_receipts.role",
+      "dataset_receipts.label",
+      "dataset_receipts.receipt_url",
+      "evidence_receipts.policy",
+      "audit_packages.audit_id"
+    ],
+    "private_fields": [
+      "raw training data",
+      "full evaluation report unless disclosed",
+      "full risk review unless disclosed",
+      "licensed source documents",
+      "model weights unless separately released"
+    ]
+  },
+  "integrity": {
+    "attachment_hash_algorithm": "sha256",
+    "attachment_hash": "333333333333333333333333333333333333333333333333333333333333",
+    "notes": "Hash this attachment after replacing placeholder identifiers and include the hash in the model provenance record model_card_hash or as a related compliance evidence hash."
+  }
+}

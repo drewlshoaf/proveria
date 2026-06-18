@@ -107,7 +107,7 @@ AI dataset provenance as the flagship use case.
 - [*] Dataset revision receipt workflow distinguishes new, changed, removed,
       and unchanged files or records.
 - [*] Licensed-content audit package example exists.
-- [ ] Model-card provenance attachment example exists.
+- [*] Model-card provenance attachment example exists.
 - [ ] Python example creates a dataset inventory attestation.
 - [ ] Python example creates or verifies a dataset revision receipt.
 - [*] CLI example creates a dataset inventory package.

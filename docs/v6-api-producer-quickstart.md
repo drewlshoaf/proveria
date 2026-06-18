@@ -8,6 +8,11 @@ For the public API contract and operational rules, see
 `docs/public-api-integration-policy.md`. For endpoint-by-endpoint examples, see
 `docs/public-api-examples.md`.
 
+For model governance workflows, use
+`docs/v6-model-card-provenance-attachment.md` to connect a model card to model
+release, dataset inventory, dataset revision, evaluation, policy, approval, and
+audit-package receipts.
+
 ## Prerequisites
 
 Start the local stack and seed evaluation data:
