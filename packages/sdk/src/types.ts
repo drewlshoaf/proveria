@@ -183,6 +183,46 @@ export interface CreateHashAttestationInput {
   description?: string;
   fileName?: string;
   byteSize?: number;
+  sourceMetadata?: ModelReleaseSourceMetadata;
+  idempotencyKey?: string;
+}
+
+export interface ModelReleaseSourceMetadata {
+  provider: 'model_release';
+  recordType: 'model_provenance_record';
+  schemaVersion: string;
+  canonicalHash: string;
+  modelName: string;
+  modelVersion: string;
+  modelType: string;
+  releaseStage: string;
+  claimType: string;
+  claimText: string;
+  claimScope: string;
+  subjectType: string;
+  subjectIdentifier: string;
+  subjectHash: string;
+  artifactManifestHash: string;
+  modelCardHash: string;
+  datasetManifestHash: string;
+  evaluationReportHash: string;
+  riskReviewHash?: string;
+  policyId: string;
+  policyVersion: string;
+  policyDecision: string;
+  finalApprover: string;
+  finalApprovalTimestamp: string;
+  disclosureMode: string;
+  verificationPolicy: string;
+  retentionPeriod?: string;
+  knownLimitations?: string;
+}
+
+export interface CreateModelReleaseAttestationInput {
+  project: string;
+  record: Record<string, unknown>;
+  label?: string;
+  fileName?: string;
   idempotencyKey?: string;
 }
 

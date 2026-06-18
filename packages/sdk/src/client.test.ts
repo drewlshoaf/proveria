@@ -11,6 +11,50 @@ const jsonResponse = (body: unknown, init?: ResponseInit): Response =>
     },
   });
 
+const sampleModelReleaseRecord = (): Record<string, unknown> => ({
+  record_type: 'model_provenance_record',
+  schema_version: '0.1',
+  model: {
+    name: 'Graduation Model',
+    version: '2026.06',
+    type: 'classifier',
+    release_stage: 'production',
+  },
+  claim: {
+    claim_type: 'model_release_approved',
+    claim_text: 'This model version was approved for production release.',
+    claim_scope: 'full_release_package',
+    subject_type: 'model_artifact',
+    subject_identifier: 'registry://models/graduation/2026.06',
+    subject_hash: 'b'.repeat(64),
+  },
+  artifacts: {
+    artifact_manifest_hash: 'c'.repeat(64),
+    model_card_hash: 'd'.repeat(64),
+  },
+  data_provenance: {
+    dataset_manifest_hash: 'e'.repeat(64),
+  },
+  evaluation: {
+    evaluation_report_hash: 'f'.repeat(64),
+    known_limitations: 'Monitor for drift.',
+  },
+  policy: {
+    policy_id: 'AI-GOV-001',
+    policy_version: '2026.1',
+    policy_decision: 'approved',
+  },
+  approval: {
+    final_approver: 'Model Risk Committee',
+    final_approval_timestamp: '2026-06-04T18:00:00Z',
+  },
+  disclosure: {
+    disclosure_mode: 'public_receipt_private_evidence',
+    verification_policy: 'verify_model_release_claim',
+    retention_period: '7 years',
+  },
+});
+
 describe('ProveriaClient', () => {
   it('fetches public API docs without credentials', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
@@ -204,6 +248,113 @@ describe('ProveriaClient', () => {
     expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({
       label: 'invoice',
       sha256: 'a'.repeat(64),
+    });
+  });
+
+  it('creates model release attestations with canonical source metadata', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = new ProveriaClient({
+      apiKey: 'prv_v1_test',
+      tenant: 'evaluation-workspace',
+      apiUrl: 'http://api.test',
+      fetch: async (url: string | URL | Request, init?: RequestInit) => {
+        calls.push({ url: String(url), init });
+        return jsonResponse({
+          data: { id: 'att_model', state: 'validating' },
+          meta: { requestId: 'req_model' },
+        });
+      },
+    });
+
+    await client.attestations.createModelRelease({
+      project: 'models',
+      label: 'Graduation Model release',
+      record: sampleModelReleaseRecord(),
+      idempotencyKey: 'model_1',
+    });
+
+    expect(calls[0]?.url).toBe(
+      'http://api.test/v1/tenants/evaluation-workspace/projects/models/attestations',
+    );
+    expect(calls[0]?.init?.headers).toMatchObject({
+      'idempotency-key': 'model_1',
+    });
+    const body = JSON.parse(String(calls[0]?.init?.body)) as {
+      label: string;
+      sha256: string;
+      fileName: string;
+      byteSize: number;
+      sourceMetadata: Record<string, unknown>;
+    };
+    expect(body).toMatchObject({
+      label: 'Graduation Model release',
+      fileName: 'model-release.json',
+      sourceMetadata: {
+        provider: 'model_release',
+        recordType: 'model_provenance_record',
+        modelName: 'Graduation Model',
+        modelVersion: '2026.06',
+        claimType: 'model_release_approved',
+        subjectHash: 'b'.repeat(64),
+        policyId: 'AI-GOV-001',
+        retentionPeriod: '7 years',
+      },
+    });
+    expect(body.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(body.sourceMetadata.canonicalHash).toBe(body.sha256);
+    expect(body.byteSize).toBeGreaterThan(0);
+  });
+
+  it('passes explicit model release source metadata through hash attestations', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = new ProveriaClient({
+      apiKey: 'prv_v1_test',
+      tenant: 'evaluation-workspace',
+      apiUrl: 'http://api.test',
+      fetch: async (url: string | URL | Request, init?: RequestInit) => {
+        calls.push({ url: String(url), init });
+        return jsonResponse({ data: { id: 'att_1' }, meta: { requestId: 'req_1' } });
+      },
+    });
+
+    await client.attestations.createHash({
+      project: 'models',
+      label: 'model-release',
+      sha256: 'a'.repeat(64),
+      sourceMetadata: {
+        provider: 'model_release',
+        recordType: 'model_provenance_record',
+        schemaVersion: '0.1',
+        canonicalHash: 'a'.repeat(64),
+        modelName: 'Graduation Model',
+        modelVersion: '2026.06',
+        modelType: 'classifier',
+        releaseStage: 'production',
+        claimType: 'model_release_approved',
+        claimText: 'Approved.',
+        claimScope: 'full_release_package',
+        subjectType: 'model_artifact',
+        subjectIdentifier: 'registry://models/graduation/2026.06',
+        subjectHash: 'b'.repeat(64),
+        artifactManifestHash: 'c'.repeat(64),
+        modelCardHash: 'd'.repeat(64),
+        datasetManifestHash: 'e'.repeat(64),
+        evaluationReportHash: 'f'.repeat(64),
+        policyId: 'AI-GOV-001',
+        policyVersion: '2026.1',
+        policyDecision: 'approved',
+        finalApprover: 'Model Risk Committee',
+        finalApprovalTimestamp: '2026-06-04T18:00:00Z',
+        disclosureMode: 'public_receipt_private_evidence',
+        verificationPolicy: 'verify_model_release_claim',
+      },
+    });
+
+    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({
+      sourceMetadata: {
+        provider: 'model_release',
+        canonicalHash: 'a'.repeat(64),
+      },
     });
   });
 

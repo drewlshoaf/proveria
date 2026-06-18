@@ -26,6 +26,52 @@ class FakeResponse:
         return None
 
 
+def sample_model_release_record() -> dict:
+    return {
+        "record_type": "model_provenance_record",
+        "schema_version": "0.1",
+        "model": {
+            "name": "Graduation Model",
+            "version": "2026.06",
+            "type": "classifier",
+            "release_stage": "production",
+        },
+        "claim": {
+            "claim_type": "model_release_approved",
+            "claim_text": "This model version was approved for production release.",
+            "claim_scope": "full_release_package",
+            "subject_type": "model_artifact",
+            "subject_identifier": "registry://models/graduation/2026.06",
+            "subject_hash": "b" * 64,
+        },
+        "artifacts": {
+            "artifact_manifest_hash": "c" * 64,
+            "model_card_hash": "d" * 64,
+        },
+        "data_provenance": {
+            "dataset_manifest_hash": "e" * 64,
+        },
+        "evaluation": {
+            "evaluation_report_hash": "f" * 64,
+            "known_limitations": "Monitor for drift.",
+        },
+        "policy": {
+            "policy_id": "AI-GOV-001",
+            "policy_version": "2026.1",
+            "policy_decision": "approved",
+        },
+        "approval": {
+            "final_approver": "Model Risk Committee",
+            "final_approval_timestamp": "2026-06-04T18:00:00Z",
+        },
+        "disclosure": {
+            "disclosure_mode": "public_receipt_private_evidence",
+            "verification_policy": "verify_model_release_claim",
+            "retention_period": "7 years",
+        },
+    }
+
+
 class ClientTests(unittest.TestCase):
     def test_list_projects_sends_bearer_auth_and_parses_rate_limit_meta(self) -> None:
         seen = {}
@@ -119,6 +165,82 @@ class ClientTests(unittest.TestCase):
         )
         self.assertEqual(seen["headers"]["Idempotency-key"], "idem_1")
         self.assertEqual(seen["body"]["sha256"], "a" * 64)
+
+    def test_create_hash_attestation_accepts_source_metadata(self) -> None:
+        seen = {}
+
+        def fake_urlopen(req, timeout=30):
+            seen["body"] = json.loads(req.data.decode("utf-8"))
+            return FakeResponse({"data": {"id": "att_1"}, "meta": {}})
+
+        client = ProveriaClient(api_key="prv_v1_test", tenant="evaluation-workspace", api_url="http://api.test")
+        with patch("proveria.client.urlopen", fake_urlopen):
+            client.attestations.create_hash(
+                project="models",
+                label="model-release",
+                sha256="a" * 64,
+                source_metadata={
+                    "provider": "model_release",
+                    "recordType": "model_provenance_record",
+                    "schemaVersion": "0.1",
+                    "canonicalHash": "a" * 64,
+                    "modelName": "Graduation Model",
+                    "modelVersion": "2026.06",
+                    "modelType": "classifier",
+                    "releaseStage": "production",
+                    "claimType": "model_release_approved",
+                    "claimText": "Approved.",
+                    "claimScope": "full_release_package",
+                    "subjectType": "model_artifact",
+                    "subjectIdentifier": "registry://models/graduation/2026.06",
+                    "subjectHash": "b" * 64,
+                    "artifactManifestHash": "c" * 64,
+                    "modelCardHash": "d" * 64,
+                    "datasetManifestHash": "e" * 64,
+                    "evaluationReportHash": "f" * 64,
+                    "policyId": "AI-GOV-001",
+                    "policyVersion": "2026.1",
+                    "policyDecision": "approved",
+                    "finalApprover": "Model Risk Committee",
+                    "finalApprovalTimestamp": "2026-06-04T18:00:00Z",
+                    "disclosureMode": "public_receipt_private_evidence",
+                    "verificationPolicy": "verify_model_release_claim",
+                },
+            )
+
+        self.assertEqual(seen["body"]["sourceMetadata"]["provider"], "model_release")
+        self.assertEqual(seen["body"]["sourceMetadata"]["canonicalHash"], "a" * 64)
+
+    def test_create_model_release_attestation_builds_canonical_metadata(self) -> None:
+        seen = {}
+
+        def fake_urlopen(req, timeout=30):
+            seen["url"] = req.full_url
+            seen["headers"] = dict(req.header_items())
+            seen["body"] = json.loads(req.data.decode("utf-8"))
+            return FakeResponse({"data": {"id": "att_model"}, "meta": {}})
+
+        client = ProveriaClient(api_key="prv_v1_test", tenant="evaluation-workspace", api_url="http://api.test")
+        with patch("proveria.client.urlopen", fake_urlopen):
+            client.attestations.create_model_release(
+                project="models",
+                record=sample_model_release_record(),
+                label="Graduation Model release",
+                idempotency_key="model_1",
+            )
+
+        self.assertEqual(
+            seen["url"],
+            "http://api.test/v1/tenants/evaluation-workspace/projects/models/attestations",
+        )
+        self.assertEqual(seen["headers"]["Idempotency-key"], "model_1")
+        self.assertEqual(seen["body"]["label"], "Graduation Model release")
+        self.assertEqual(seen["body"]["fileName"], "model-release.json")
+        self.assertRegex(seen["body"]["sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(seen["body"]["sourceMetadata"]["canonicalHash"], seen["body"]["sha256"])
+        self.assertEqual(seen["body"]["sourceMetadata"]["modelName"], "Graduation Model")
+        self.assertEqual(seen["body"]["sourceMetadata"]["policyId"], "AI-GOV-001")
+        self.assertEqual(seen["body"]["sourceMetadata"]["retentionPeriod"], "7 years")
 
     def test_compatibility_aliases_still_work(self) -> None:
         seen = {}

@@ -90,6 +90,61 @@ const receiptPdf = await proveria.receipts.getPdf(created.data.id);
 console.log(receipt.data.receiptAvailable, receiptJson, receiptPdf.byteLength);
 ```
 
+## Model Release Receipts
+
+Use `createModelRelease` when you have a claim-backed model provenance record
+object. The SDK canonicalizes the JSON, hashes it locally, extracts the model
+release metadata, and sends only hash metadata to the public API.
+
+```ts
+const modelReleaseRecord = {
+  record_type: 'model_provenance_record',
+  schema_version: '0.1',
+  model: {
+    name: 'Graduation Model',
+    version: '2026.06',
+    type: 'classifier',
+    release_stage: 'production',
+  },
+  claim: {
+    claim_type: 'model_release_approved',
+    claim_text: 'This model version was approved for production release.',
+    claim_scope: 'full_release_package',
+    subject_type: 'model_artifact',
+    subject_identifier: 'registry://models/graduation/2026.06',
+    subject_hash: 'b'.repeat(64),
+  },
+  artifacts: {
+    artifact_manifest_hash: 'c'.repeat(64),
+    model_card_hash: 'd'.repeat(64),
+  },
+  data_provenance: { dataset_manifest_hash: 'e'.repeat(64) },
+  evaluation: { evaluation_report_hash: 'f'.repeat(64) },
+  policy: {
+    policy_id: 'AI-GOV-001',
+    policy_version: '2026.1',
+    policy_decision: 'approved',
+  },
+  approval: {
+    final_approver: 'Model Risk Committee',
+    final_approval_timestamp: '2026-06-04T18:00:00Z',
+  },
+  disclosure: {
+    disclosure_mode: 'public_receipt_private_evidence',
+    verification_policy: 'verify_model_release_claim',
+  },
+};
+
+const modelRelease = await proveria.attestations.createModelRelease({
+  project: 'evaluation-evidence',
+  record: modelReleaseRecord,
+  label: 'Graduation Model 2026.06 release',
+  idempotencyKey: 'model-release-2026-06',
+});
+
+console.log(modelRelease.data.id);
+```
+
 ## Verifier Access
 
 ```ts

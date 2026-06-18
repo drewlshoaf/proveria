@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256 as _sha256
 import time
 import uuid
 from dataclasses import dataclass
@@ -184,6 +185,7 @@ class ProveriaClient:
         description: str | None = None,
         file_name: str | None = None,
         byte_size: int | None = None,
+        source_metadata: JsonObject | None = None,
         idempotency_key: str | None = None,
     ) -> JsonObject:
         return self.attestations.create_hash(
@@ -193,6 +195,24 @@ class ProveriaClient:
             description=description,
             file_name=file_name,
             byte_size=byte_size,
+            source_metadata=source_metadata,
+            idempotency_key=idempotency_key,
+        )
+
+    def create_model_release_attestation(
+        self,
+        *,
+        project: str,
+        record: JsonObject,
+        label: str | None = None,
+        file_name: str = "model-release.json",
+        idempotency_key: str | None = None,
+    ) -> JsonObject:
+        return self.attestations.create_model_release(
+            project=project,
+            record=record,
+            label=label,
+            file_name=file_name,
             idempotency_key=idempotency_key,
         )
 
@@ -374,6 +394,7 @@ class AttestationsApi:
         description: str | None = None,
         file_name: str | None = None,
         byte_size: int | None = None,
+        source_metadata: JsonObject | None = None,
         idempotency_key: str | None = None,
     ) -> JsonObject:
         normalized = _normalize_sha256(sha256)
@@ -384,11 +405,34 @@ class AttestationsApi:
             if byte_size < 0:
                 raise ValueError("byte_size must be non-negative")
             body["byteSize"] = byte_size
+        _set_optional(body, "sourceMetadata", source_metadata)
         return self.client.request(
             "POST",
             self.client.tenant_path(f"/projects/{quote(project)}/attestations"),
             body=body,
             idempotency_key=idempotency_key or _generate_idempotency_key(),
+        )
+
+    def create_model_release(
+        self,
+        *,
+        project: str,
+        record: JsonObject,
+        label: str | None = None,
+        file_name: str = "model-release.json",
+        idempotency_key: str | None = None,
+    ) -> JsonObject:
+        canonical = _canonical_json(record)
+        canonical_hash = _sha256(canonical.encode("utf-8")).hexdigest()
+        source_metadata = _model_release_source_metadata(record, canonical_hash)
+        return self.create_hash(
+            project=project,
+            label=label or f"{source_metadata['modelName']} {source_metadata['modelVersion']} release",
+            sha256=canonical_hash,
+            file_name=file_name,
+            byte_size=len(canonical.encode("utf-8")),
+            source_metadata=source_metadata,
+            idempotency_key=idempotency_key,
         )
 
     def get(self, attestation_id: str) -> JsonObject:
@@ -714,6 +758,87 @@ def _normalize_sha256(value: str) -> str:
     if len(normalized) != 64 or any(c not in "0123456789abcdef" for c in normalized):
         raise ValueError("expected a 64-character SHA-256 hex string")
     return normalized
+
+
+def _canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def _model_release_source_metadata(record: JsonObject, canonical_hash: str) -> JsonObject:
+    record_type = _required_string(record, ("record_type",))
+    if record_type != "model_provenance_record":
+        raise ValueError("record_type must be model_provenance_record")
+    metadata: JsonObject = {
+        "provider": "model_release",
+        "recordType": "model_provenance_record",
+        "schemaVersion": _required_string(record, ("schema_version",)),
+        "canonicalHash": canonical_hash,
+        "modelName": _required_string(record, ("model", "name")),
+        "modelVersion": _required_string(record, ("model", "version")),
+        "modelType": _required_string(record, ("model", "type")),
+        "releaseStage": _required_string(record, ("model", "release_stage")),
+        "claimType": _required_string(record, ("claim", "claim_type")),
+        "claimText": _required_string(record, ("claim", "claim_text")),
+        "claimScope": _required_string(record, ("claim", "claim_scope")),
+        "subjectType": _required_string(record, ("claim", "subject_type")),
+        "subjectIdentifier": _required_string(record, ("claim", "subject_identifier")),
+        "subjectHash": _required_sha256(record, ("claim", "subject_hash")),
+        "artifactManifestHash": _required_sha256(record, ("artifacts", "artifact_manifest_hash")),
+        "modelCardHash": _required_sha256(record, ("artifacts", "model_card_hash")),
+        "datasetManifestHash": _required_sha256(record, ("data_provenance", "dataset_manifest_hash")),
+        "evaluationReportHash": _required_sha256(record, ("evaluation", "evaluation_report_hash")),
+        "policyId": _required_string(record, ("policy", "policy_id")),
+        "policyVersion": _required_string(record, ("policy", "policy_version")),
+        "policyDecision": _required_string(record, ("policy", "policy_decision")),
+        "finalApprover": _required_string(record, ("approval", "final_approver")),
+        "finalApprovalTimestamp": _required_string(record, ("approval", "final_approval_timestamp")),
+        "disclosureMode": _required_string(record, ("disclosure", "disclosure_mode")),
+        "verificationPolicy": _required_string(record, ("disclosure", "verification_policy")),
+    }
+    risk_review_hash = _optional_sha256(record, ("evaluation", "risk_review_hash"))
+    if risk_review_hash:
+        metadata["riskReviewHash"] = risk_review_hash
+    retention_period = _optional_string(record, ("disclosure", "retention_period"))
+    if retention_period:
+        metadata["retentionPeriod"] = retention_period
+    known_limitations = _optional_string(record, ("evaluation", "known_limitations"))
+    if known_limitations:
+        metadata["knownLimitations"] = known_limitations
+    return metadata
+
+
+def _value_at_path(record: JsonObject, path: tuple[str, ...]) -> Any:
+    current: Any = record
+    for segment in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(segment)
+    return current
+
+
+def _required_string(record: JsonObject, path: tuple[str, ...]) -> str:
+    value = _value_at_path(record, path)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"missing required string field {'.'.join(path)}")
+    return value.strip()
+
+
+def _optional_string(record: JsonObject, path: tuple[str, ...]) -> str | None:
+    value = _value_at_path(record, path)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{'.'.join(path)} must be a string")
+    return value.strip() or None
+
+
+def _required_sha256(record: JsonObject, path: tuple[str, ...]) -> str:
+    return _normalize_sha256(_required_string(record, path))
+
+
+def _optional_sha256(record: JsonObject, path: tuple[str, ...]) -> str | None:
+    value = _optional_string(record, path)
+    return _normalize_sha256(value) if value else None
 
 
 def _generate_idempotency_key() -> str:
