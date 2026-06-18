@@ -72,6 +72,32 @@ def sample_model_release_record() -> dict:
     }
 
 
+def sample_dataset_inventory_record() -> dict:
+    return {
+        "record_type": "dataset_inventory_record",
+        "schema_version": "0.1",
+        "dataset": {
+            "name": "Training Dataset",
+            "version": "2026.06",
+            "inventory_scope": "folder",
+            "source_owner": "Data Governance",
+            "license_usage_basis": "Internal governed dataset approval.",
+            "data_classification": "confidential",
+            "retention_rule": "7 years",
+        },
+        "summary": {
+            "file_count": 2,
+            "total_bytes": 1536,
+            "dataset_root_hash": "b" * 64,
+            "hash_algorithm": "sha256",
+        },
+        "files": [
+            {"path": "train/a.jsonl", "sha256": "c" * 64, "byte_size": 1024},
+            {"path": "eval/b.jsonl", "sha256": "d" * 64, "byte_size": 512},
+        ],
+    }
+
+
 class ClientTests(unittest.TestCase):
     def test_list_projects_sends_bearer_auth_and_parses_rate_limit_meta(self) -> None:
         seen = {}
@@ -241,6 +267,39 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(seen["body"]["sourceMetadata"]["modelName"], "Graduation Model")
         self.assertEqual(seen["body"]["sourceMetadata"]["policyId"], "AI-GOV-001")
         self.assertEqual(seen["body"]["sourceMetadata"]["retentionPeriod"], "7 years")
+
+    def test_create_dataset_inventory_attestation_builds_canonical_metadata(self) -> None:
+        seen = {}
+
+        def fake_urlopen(req, timeout=30):
+            seen["url"] = req.full_url
+            seen["headers"] = dict(req.header_items())
+            seen["body"] = json.loads(req.data.decode("utf-8"))
+            return FakeResponse({"data": {"id": "att_dataset"}, "meta": {}})
+
+        client = ProveriaClient(api_key="prv_v1_test", tenant="evaluation-workspace", api_url="http://api.test")
+        with patch("proveria.client.urlopen", fake_urlopen):
+            client.attestations.create_dataset_inventory(
+                project="datasets",
+                record=sample_dataset_inventory_record(),
+                label="Training Dataset inventory",
+                idempotency_key="dataset_1",
+            )
+
+        self.assertEqual(
+            seen["url"],
+            "http://api.test/v1/tenants/evaluation-workspace/projects/datasets/attestations",
+        )
+        self.assertEqual(seen["headers"]["Idempotency-key"], "dataset_1")
+        self.assertEqual(seen["body"]["label"], "Training Dataset inventory")
+        self.assertEqual(seen["body"]["fileName"], "dataset-inventory.json")
+        self.assertRegex(seen["body"]["sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(seen["body"]["sourceMetadata"]["canonicalHash"], seen["body"]["sha256"])
+        self.assertEqual(seen["body"]["sourceMetadata"]["provider"], "dataset_inventory")
+        self.assertEqual(seen["body"]["sourceMetadata"]["datasetName"], "Training Dataset")
+        self.assertEqual(seen["body"]["sourceMetadata"]["fileCount"], 2)
+        self.assertEqual(seen["body"]["sourceMetadata"]["datasetRootHash"], "b" * 64)
+        self.assertEqual(seen["body"]["sourceMetadata"]["retentionRule"], "7 years")
 
     def test_compatibility_aliases_still_work(self) -> None:
         seen = {}

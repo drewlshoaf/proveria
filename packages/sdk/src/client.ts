@@ -4,6 +4,7 @@ import {
   type ApiEnvelope,
   type ApiKeyCredential,
   type Attestation,
+  type CreateDatasetInventoryAttestationInput,
   type CreateModelReleaseAttestationInput,
   type CreateProjectInput,
   type CreateWebhookEndpointInput,
@@ -22,6 +23,7 @@ import {
   type ListEventsOptions,
   type ListProjectsOptions,
   type ListWebhooksOptions,
+  type DatasetInventorySourceMetadata,
   type ModelReleaseSourceMetadata,
   type OpenApiDocument,
   type PaginatedApiEnvelope,
@@ -379,6 +381,25 @@ class AttestationsApi {
     });
   }
 
+  async createDatasetInventory(
+    input: CreateDatasetInventoryAttestationInput,
+  ): Promise<ApiEnvelope<Attestation>> {
+    const canonical = canonicalJsonStable(input.record);
+    const canonicalHash = sha256HexString(canonical);
+    const sourceMetadata = datasetInventorySourceMetadata(input.record, canonicalHash);
+    return this.createHash({
+      project: input.project,
+      label:
+        input.label ??
+        `${sourceMetadata.datasetName} ${sourceMetadata.datasetVersion} inventory`,
+      sha256: canonicalHash,
+      fileName: input.fileName ?? 'dataset-inventory.json',
+      byteSize: new TextEncoder().encode(canonical).byteLength,
+      sourceMetadata,
+      idempotencyKey: input.idempotencyKey,
+    });
+  }
+
   async get(id: string): Promise<ApiEnvelope<Attestation>> {
     return this.client.request(this.client.tenantPath(`/attestations/${encodeURIComponent(id)}`));
   }
@@ -688,6 +709,35 @@ const modelReleaseSourceMetadata = (
   };
 };
 
+const datasetInventorySourceMetadata = (
+  record: Record<string, unknown>,
+  canonicalHash: string,
+): DatasetInventorySourceMetadata => {
+  const recordType = requiredString(record, ['record_type']);
+  if (recordType !== 'dataset_inventory_record') {
+    throw new Error('record_type must be dataset_inventory_record.');
+  }
+  const sourceOwner = optionalString(record, ['dataset', 'source_owner']);
+  const licenseUsageBasis = optionalString(record, ['dataset', 'license_usage_basis']);
+  const retentionRule = optionalString(record, ['dataset', 'retention_rule']);
+  return {
+    provider: 'dataset_inventory',
+    recordType: 'dataset_inventory_record',
+    schemaVersion: requiredString(record, ['schema_version']),
+    canonicalHash,
+    datasetName: requiredString(record, ['dataset', 'name']),
+    datasetVersion: requiredString(record, ['dataset', 'version']),
+    inventoryScope: requiredString(record, ['dataset', 'inventory_scope']),
+    fileCount: requiredNumber(record, ['summary', 'file_count']),
+    totalBytes: requiredNumber(record, ['summary', 'total_bytes']),
+    datasetRootHash: requiredSha256(record, ['summary', 'dataset_root_hash']),
+    dataClassification: requiredString(record, ['dataset', 'data_classification']),
+    ...(sourceOwner ? { sourceOwner } : {}),
+    ...(licenseUsageBasis ? { licenseUsageBasis } : {}),
+    ...(retentionRule ? { retentionRule } : {}),
+  };
+};
+
 const valueAtPath = (record: Record<string, unknown>, path: string[]): unknown => {
   let current: unknown = record;
   for (const segment of path) {
@@ -711,6 +761,14 @@ const optionalString = (record: Record<string, unknown>, path: string[]): string
   if (typeof value !== 'string') throw new Error(`${path.join('.')} must be a string.`);
   const trimmed = value.trim();
   return trimmed || undefined;
+};
+
+const requiredNumber = (record: Record<string, unknown>, path: string[]): number => {
+  const value = valueAtPath(record, path);
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error(`Missing required non-negative integer field ${path.join('.')}.`);
+  }
+  return value;
 };
 
 const requiredSha256 = (record: Record<string, unknown>, path: string[]): string => {

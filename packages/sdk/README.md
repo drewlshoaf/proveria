@@ -90,6 +90,47 @@ const receiptPdf = await proveria.receipts.getPdf(created.data.id);
 console.log(receipt.data.receiptAvailable, receiptJson, receiptPdf.byteLength);
 ```
 
+## Dataset Inventory Receipts
+
+Use `createDatasetInventory` when you have a canonical dataset inventory record
+object. The SDK canonicalizes the JSON, hashes it locally, extracts dataset
+summary metadata, and sends only hash metadata to the public API.
+
+```ts
+const datasetInventoryRecord = {
+  record_type: 'dataset_inventory_record',
+  schema_version: '0.1',
+  dataset: {
+    name: 'Training Dataset',
+    version: '2026.06',
+    inventory_scope: 'folder',
+    source_owner: 'Data Governance',
+    license_usage_basis: 'Internal governed dataset approval.',
+    data_classification: 'confidential',
+    retention_rule: '7 years',
+  },
+  summary: {
+    file_count: 2,
+    total_bytes: 1536,
+    dataset_root_hash: 'b'.repeat(64),
+    hash_algorithm: 'sha256',
+  },
+  files: [
+    { path: 'train/a.jsonl', sha256: 'c'.repeat(64), byte_size: 1024 },
+    { path: 'eval/b.jsonl', sha256: 'd'.repeat(64), byte_size: 512 },
+  ],
+};
+
+const datasetInventory = await proveria.attestations.createDatasetInventory({
+  project: 'evaluation-evidence',
+  record: datasetInventoryRecord,
+  label: 'Training Dataset 2026.06 inventory',
+  idempotencyKey: 'dataset-inventory-2026-06',
+});
+
+console.log(datasetInventory.data.id);
+```
+
 ## Model Release Receipts
 
 Use `createModelRelease` when you have a claim-backed model provenance record

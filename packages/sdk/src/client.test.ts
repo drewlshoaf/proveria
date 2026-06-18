@@ -55,6 +55,30 @@ const sampleModelReleaseRecord = (): Record<string, unknown> => ({
   },
 });
 
+const sampleDatasetInventoryRecord = (): Record<string, unknown> => ({
+  record_type: 'dataset_inventory_record',
+  schema_version: '0.1',
+  dataset: {
+    name: 'Training Dataset',
+    version: '2026.06',
+    inventory_scope: 'folder',
+    source_owner: 'Data Governance',
+    license_usage_basis: 'Internal governed dataset approval.',
+    data_classification: 'confidential',
+    retention_rule: '7 years',
+  },
+  summary: {
+    file_count: 2,
+    total_bytes: 1536,
+    dataset_root_hash: 'b'.repeat(64),
+    hash_algorithm: 'sha256',
+  },
+  files: [
+    { path: 'train/a.jsonl', sha256: 'c'.repeat(64), byte_size: 1024 },
+    { path: 'eval/b.jsonl', sha256: 'd'.repeat(64), byte_size: 512 },
+  ],
+});
+
 describe('ProveriaClient', () => {
   it('fetches public API docs without credentials', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
@@ -356,6 +380,61 @@ describe('ProveriaClient', () => {
         canonicalHash: 'a'.repeat(64),
       },
     });
+  });
+
+  it('creates dataset inventory attestations with canonical source metadata', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = new ProveriaClient({
+      apiKey: 'prv_v1_test',
+      tenant: 'evaluation-workspace',
+      apiUrl: 'http://api.test',
+      fetch: async (url: string | URL | Request, init?: RequestInit) => {
+        calls.push({ url: String(url), init });
+        return jsonResponse({
+          data: { id: 'att_dataset', state: 'validating' },
+          meta: { requestId: 'req_dataset' },
+        });
+      },
+    });
+
+    await client.attestations.createDatasetInventory({
+      project: 'datasets',
+      label: 'Training Dataset inventory',
+      record: sampleDatasetInventoryRecord(),
+      idempotencyKey: 'dataset_1',
+    });
+
+    expect(calls[0]?.url).toBe(
+      'http://api.test/v1/tenants/evaluation-workspace/projects/datasets/attestations',
+    );
+    expect(calls[0]?.init?.headers).toMatchObject({
+      'idempotency-key': 'dataset_1',
+    });
+    const body = JSON.parse(String(calls[0]?.init?.body)) as {
+      label: string;
+      sha256: string;
+      fileName: string;
+      sourceMetadata: Record<string, unknown>;
+    };
+    expect(body).toMatchObject({
+      label: 'Training Dataset inventory',
+      fileName: 'dataset-inventory.json',
+      sourceMetadata: {
+        provider: 'dataset_inventory',
+        recordType: 'dataset_inventory_record',
+        datasetName: 'Training Dataset',
+        datasetVersion: '2026.06',
+        inventoryScope: 'folder',
+        fileCount: 2,
+        totalBytes: 1536,
+        datasetRootHash: 'b'.repeat(64),
+        dataClassification: 'confidential',
+        sourceOwner: 'Data Governance',
+        retentionRule: '7 years',
+      },
+    });
+    expect(body.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(body.sourceMetadata.canonicalHash).toBe(body.sha256);
   });
 
   it('lists and verifies hashes', async () => {
