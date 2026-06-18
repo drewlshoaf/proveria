@@ -123,21 +123,119 @@ interface GoogleDriveSourceMetadata {
   googleAccountEmail?: string;
 }
 
-type AttestationSourceMetadata = GoogleDriveSourceMetadata;
+interface ModelReleaseSourceMetadata {
+  [key: string]: unknown;
+  provider: 'model_release';
+  recordType: 'model_provenance_record';
+  schemaVersion: string;
+  canonicalHash: string;
+  modelName: string;
+  modelVersion: string;
+  modelType: string;
+  releaseStage: string;
+  claimType: string;
+  claimText: string;
+  claimScope: string;
+  subjectType: string;
+  subjectIdentifier: string;
+  subjectHash: string;
+  artifactManifestHash: string;
+  modelCardHash: string;
+  datasetManifestHash: string;
+  evaluationReportHash: string;
+  policyId: string;
+  policyVersion: string;
+  policyDecision: string;
+  finalApprover: string;
+  finalApprovalTimestamp: string;
+  disclosureMode: string;
+  verificationPolicy: string;
+  createdByUserId: string;
+  createdAt: string;
+}
+
+type AttestationSourceMetadata =
+  | GoogleDriveSourceMetadata
+  | ModelReleaseSourceMetadata;
 
 const sourceMetadataSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['provider', 'fileId', 'fileName'],
-  properties: {
-    provider: { const: 'google_drive' },
-    fileId: { type: 'string', minLength: 1, maxLength: 512 },
-    fileName: { type: 'string', minLength: 1, maxLength: 512 },
-    mimeType: { type: 'string', minLength: 1, maxLength: 255 },
-    size: { type: 'integer', minimum: 0 },
-    modifiedTime: { type: 'string', maxLength: 80 },
-    googleAccountEmail: { type: 'string', minLength: 3, maxLength: 320 },
-  },
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['provider', 'fileId', 'fileName'],
+      properties: {
+        provider: { const: 'google_drive' },
+        fileId: { type: 'string', minLength: 1, maxLength: 512 },
+        fileName: { type: 'string', minLength: 1, maxLength: 512 },
+        mimeType: { type: 'string', minLength: 1, maxLength: 255 },
+        size: { type: 'integer', minimum: 0 },
+        modifiedTime: { type: 'string', maxLength: 80 },
+        googleAccountEmail: { type: 'string', minLength: 3, maxLength: 320 },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'provider',
+        'recordType',
+        'schemaVersion',
+        'canonicalHash',
+        'modelName',
+        'modelVersion',
+        'modelType',
+        'releaseStage',
+        'claimType',
+        'claimText',
+        'claimScope',
+        'subjectType',
+        'subjectIdentifier',
+        'subjectHash',
+        'artifactManifestHash',
+        'modelCardHash',
+        'datasetManifestHash',
+        'evaluationReportHash',
+        'policyId',
+        'policyVersion',
+        'policyDecision',
+        'finalApprover',
+        'finalApprovalTimestamp',
+        'disclosureMode',
+        'verificationPolicy',
+      ],
+      properties: {
+        provider: { const: 'model_release' },
+        recordType: { const: 'model_provenance_record' },
+        schemaVersion: { type: 'string', minLength: 1, maxLength: 32 },
+        canonicalHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        modelName: { type: 'string', minLength: 1, maxLength: 256 },
+        modelVersion: { type: 'string', minLength: 1, maxLength: 128 },
+        modelType: { type: 'string', minLength: 1, maxLength: 64 },
+        releaseStage: { type: 'string', minLength: 1, maxLength: 64 },
+        claimType: { type: 'string', minLength: 1, maxLength: 128 },
+        claimText: { type: 'string', minLength: 1, maxLength: 4000 },
+        claimScope: { type: 'string', minLength: 1, maxLength: 128 },
+        subjectType: { type: 'string', minLength: 1, maxLength: 128 },
+        subjectIdentifier: { type: 'string', minLength: 1, maxLength: 512 },
+        subjectHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        artifactManifestHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        modelCardHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        datasetManifestHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        evaluationReportHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        riskReviewHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        policyId: { type: 'string', minLength: 1, maxLength: 256 },
+        policyVersion: { type: 'string', minLength: 1, maxLength: 128 },
+        policyDecision: { type: 'string', minLength: 1, maxLength: 128 },
+        finalApprover: { type: 'string', minLength: 1, maxLength: 256 },
+        finalApprovalTimestamp: { type: 'string', minLength: 1, maxLength: 80 },
+        disclosureMode: { type: 'string', minLength: 1, maxLength: 128 },
+        verificationPolicy: { type: 'string', minLength: 1, maxLength: 128 },
+        retentionPeriod: { type: 'string', maxLength: 256 },
+        knownLimitations: { type: 'string', maxLength: 4000 },
+      },
+    },
+  ],
 } as const;
 
 const sourceMetadataFromBody = (
@@ -153,7 +251,107 @@ const sourceMetadataFromBody = (
     size?: unknown;
     modifiedTime?: unknown;
     googleAccountEmail?: unknown;
+    recordType?: unknown;
+    schemaVersion?: unknown;
+    canonicalHash?: unknown;
+    modelName?: unknown;
+    modelVersion?: unknown;
+    modelType?: unknown;
+    releaseStage?: unknown;
+    claimType?: unknown;
+    claimText?: unknown;
+    claimScope?: unknown;
+    subjectType?: unknown;
+    subjectIdentifier?: unknown;
+    subjectHash?: unknown;
+    artifactManifestHash?: unknown;
+    modelCardHash?: unknown;
+    datasetManifestHash?: unknown;
+    evaluationReportHash?: unknown;
+    riskReviewHash?: unknown;
+    policyId?: unknown;
+    policyVersion?: unknown;
+    policyDecision?: unknown;
+    finalApprover?: unknown;
+    finalApprovalTimestamp?: unknown;
+    disclosureMode?: unknown;
+    verificationPolicy?: unknown;
+    retentionPeriod?: unknown;
+    knownLimitations?: unknown;
   };
+  if (raw.provider === 'model_release') {
+    const required = [
+      raw.recordType,
+      raw.schemaVersion,
+      raw.canonicalHash,
+      raw.modelName,
+      raw.modelVersion,
+      raw.modelType,
+      raw.releaseStage,
+      raw.claimType,
+      raw.claimText,
+      raw.claimScope,
+      raw.subjectType,
+      raw.subjectIdentifier,
+      raw.subjectHash,
+      raw.artifactManifestHash,
+      raw.modelCardHash,
+      raw.datasetManifestHash,
+      raw.evaluationReportHash,
+      raw.policyId,
+      raw.policyVersion,
+      raw.policyDecision,
+      raw.finalApprover,
+      raw.finalApprovalTimestamp,
+      raw.disclosureMode,
+      raw.verificationPolicy,
+    ];
+    if (
+      raw.recordType !== 'model_provenance_record' ||
+      required.some((field) => typeof field !== 'string')
+    ) {
+      return null;
+    }
+    const metadata = raw as ModelReleaseSourceMetadata;
+    return {
+      provider: 'model_release',
+      recordType: 'model_provenance_record',
+      schemaVersion: metadata.schemaVersion,
+      canonicalHash: metadata.canonicalHash,
+      modelName: metadata.modelName,
+      modelVersion: metadata.modelVersion,
+      modelType: metadata.modelType,
+      releaseStage: metadata.releaseStage,
+      claimType: metadata.claimType,
+      claimText: metadata.claimText,
+      claimScope: metadata.claimScope,
+      subjectType: metadata.subjectType,
+      subjectIdentifier: metadata.subjectIdentifier,
+      subjectHash: metadata.subjectHash,
+      artifactManifestHash: metadata.artifactManifestHash,
+      modelCardHash: metadata.modelCardHash,
+      datasetManifestHash: metadata.datasetManifestHash,
+      evaluationReportHash: metadata.evaluationReportHash,
+      ...(typeof raw.riskReviewHash === 'string'
+        ? { riskReviewHash: raw.riskReviewHash }
+        : {}),
+      policyId: metadata.policyId,
+      policyVersion: metadata.policyVersion,
+      policyDecision: metadata.policyDecision,
+      finalApprover: metadata.finalApprover,
+      finalApprovalTimestamp: metadata.finalApprovalTimestamp,
+      disclosureMode: metadata.disclosureMode,
+      verificationPolicy: metadata.verificationPolicy,
+      createdByUserId: selectedByUserId,
+      createdAt: new Date().toISOString(),
+      ...(typeof raw.retentionPeriod === 'string'
+        ? { retentionPeriod: raw.retentionPeriod }
+        : {}),
+      ...(typeof raw.knownLimitations === 'string'
+        ? { knownLimitations: raw.knownLimitations }
+        : {}),
+    };
+  }
   if (
     raw.provider !== 'google_drive' ||
     typeof raw.fileId !== 'string' ||
@@ -183,7 +381,84 @@ const sourceMetadataFromBody = (
 const publicSourceMetadata = (
   value: Record<string, unknown> | null | undefined,
 ): AttestationSourceMetadata | null => {
-  if (!value || value.provider !== 'google_drive') return null;
+  if (!value) return null;
+  if (value.provider === 'model_release') {
+    const required = [
+      value.recordType,
+      value.schemaVersion,
+      value.canonicalHash,
+      value.modelName,
+      value.modelVersion,
+      value.modelType,
+      value.releaseStage,
+      value.claimType,
+      value.claimText,
+      value.claimScope,
+      value.subjectType,
+      value.subjectIdentifier,
+      value.subjectHash,
+      value.artifactManifestHash,
+      value.modelCardHash,
+      value.datasetManifestHash,
+      value.evaluationReportHash,
+      value.policyId,
+      value.policyVersion,
+      value.policyDecision,
+      value.finalApprover,
+      value.finalApprovalTimestamp,
+      value.disclosureMode,
+      value.verificationPolicy,
+    ];
+    if (
+      value.recordType !== 'model_provenance_record' ||
+      required.some((field) => typeof field !== 'string')
+    ) {
+      return null;
+    }
+    const metadata = value as ModelReleaseSourceMetadata;
+    return {
+      provider: 'model_release',
+      recordType: 'model_provenance_record',
+      schemaVersion: metadata.schemaVersion,
+      canonicalHash: metadata.canonicalHash,
+      modelName: metadata.modelName,
+      modelVersion: metadata.modelVersion,
+      modelType: metadata.modelType,
+      releaseStage: metadata.releaseStage,
+      claimType: metadata.claimType,
+      claimText: metadata.claimText,
+      claimScope: metadata.claimScope,
+      subjectType: metadata.subjectType,
+      subjectIdentifier: metadata.subjectIdentifier,
+      subjectHash: metadata.subjectHash,
+      artifactManifestHash: metadata.artifactManifestHash,
+      modelCardHash: metadata.modelCardHash,
+      datasetManifestHash: metadata.datasetManifestHash,
+      evaluationReportHash: metadata.evaluationReportHash,
+      ...(typeof value.riskReviewHash === 'string'
+        ? { riskReviewHash: value.riskReviewHash }
+        : {}),
+      policyId: metadata.policyId,
+      policyVersion: metadata.policyVersion,
+      policyDecision: metadata.policyDecision,
+      finalApprover: metadata.finalApprover,
+      finalApprovalTimestamp: metadata.finalApprovalTimestamp,
+      disclosureMode: metadata.disclosureMode,
+      verificationPolicy: metadata.verificationPolicy,
+      createdByUserId:
+        typeof value.createdByUserId === 'string'
+          ? value.createdByUserId
+          : '',
+      createdAt: typeof value.createdAt === 'string' ? value.createdAt : '',
+      ...(typeof value.retentionPeriod === 'string'
+        ? { retentionPeriod: value.retentionPeriod }
+        : {}),
+      ...(typeof value.knownLimitations === 'string'
+        ? { knownLimitations: value.knownLimitations }
+        : {}),
+    };
+  }
+  if (value.provider !== 'google_drive') return null;
   if (typeof value.fileId !== 'string' || typeof value.fileName !== 'string') {
     return null;
   }
