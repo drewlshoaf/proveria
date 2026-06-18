@@ -876,66 +876,127 @@ interface ModelReleaseSourceMetadata {
   createdAt: string;
 }
 
+interface DatasetInventorySourceMetadata {
+  [key: string]: unknown;
+  provider: 'dataset_inventory';
+  recordType: 'dataset_inventory_record';
+  schemaVersion: string;
+  canonicalHash: string;
+  datasetName: string;
+  datasetVersion: string;
+  inventoryScope: string;
+  fileCount: number;
+  totalBytes: number;
+  datasetRootHash: string;
+  dataClassification: string;
+  createdByUserId: string;
+  createdAt: string;
+  sourceOwner?: string;
+  licenseUsageBasis?: string;
+  retentionRule?: string;
+}
+
+type PublicAttestationSourceMetadata =
+  | ModelReleaseSourceMetadata
+  | DatasetInventorySourceMetadata;
+
 const modelReleaseSourceMetadataSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: [
-    'provider',
-    'recordType',
-    'schemaVersion',
-    'canonicalHash',
-    'modelName',
-    'modelVersion',
-    'modelType',
-    'releaseStage',
-    'claimType',
-    'claimText',
-    'claimScope',
-    'subjectType',
-    'subjectIdentifier',
-    'subjectHash',
-    'artifactManifestHash',
-    'modelCardHash',
-    'datasetManifestHash',
-    'evaluationReportHash',
-    'policyId',
-    'policyVersion',
-    'policyDecision',
-    'finalApprover',
-    'finalApprovalTimestamp',
-    'disclosureMode',
-    'verificationPolicy',
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'provider',
+        'recordType',
+        'schemaVersion',
+        'canonicalHash',
+        'modelName',
+        'modelVersion',
+        'modelType',
+        'releaseStage',
+        'claimType',
+        'claimText',
+        'claimScope',
+        'subjectType',
+        'subjectIdentifier',
+        'subjectHash',
+        'artifactManifestHash',
+        'modelCardHash',
+        'datasetManifestHash',
+        'evaluationReportHash',
+        'policyId',
+        'policyVersion',
+        'policyDecision',
+        'finalApprover',
+        'finalApprovalTimestamp',
+        'disclosureMode',
+        'verificationPolicy',
+      ],
+      properties: {
+        provider: { const: 'model_release' },
+        recordType: { const: 'model_provenance_record' },
+        schemaVersion: { type: 'string', minLength: 1, maxLength: 32 },
+        canonicalHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        modelName: { type: 'string', minLength: 1, maxLength: 256 },
+        modelVersion: { type: 'string', minLength: 1, maxLength: 128 },
+        modelType: { type: 'string', minLength: 1, maxLength: 64 },
+        releaseStage: { type: 'string', minLength: 1, maxLength: 64 },
+        claimType: { type: 'string', minLength: 1, maxLength: 128 },
+        claimText: { type: 'string', minLength: 1, maxLength: 4000 },
+        claimScope: { type: 'string', minLength: 1, maxLength: 128 },
+        subjectType: { type: 'string', minLength: 1, maxLength: 128 },
+        subjectIdentifier: { type: 'string', minLength: 1, maxLength: 512 },
+        subjectHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        artifactManifestHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        modelCardHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        datasetManifestHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        evaluationReportHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        riskReviewHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        policyId: { type: 'string', minLength: 1, maxLength: 256 },
+        policyVersion: { type: 'string', minLength: 1, maxLength: 128 },
+        policyDecision: { type: 'string', minLength: 1, maxLength: 128 },
+        finalApprover: { type: 'string', minLength: 1, maxLength: 256 },
+        finalApprovalTimestamp: { type: 'string', minLength: 1, maxLength: 80 },
+        disclosureMode: { type: 'string', minLength: 1, maxLength: 128 },
+        verificationPolicy: { type: 'string', minLength: 1, maxLength: 128 },
+        retentionPeriod: { type: 'string', maxLength: 256 },
+        knownLimitations: { type: 'string', maxLength: 4000 },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'provider',
+        'recordType',
+        'schemaVersion',
+        'canonicalHash',
+        'datasetName',
+        'datasetVersion',
+        'inventoryScope',
+        'fileCount',
+        'totalBytes',
+        'datasetRootHash',
+        'dataClassification',
+      ],
+      properties: {
+        provider: { const: 'dataset_inventory' },
+        recordType: { const: 'dataset_inventory_record' },
+        schemaVersion: { type: 'string', minLength: 1, maxLength: 32 },
+        canonicalHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        datasetName: { type: 'string', minLength: 1, maxLength: 256 },
+        datasetVersion: { type: 'string', minLength: 1, maxLength: 128 },
+        inventoryScope: { type: 'string', minLength: 1, maxLength: 128 },
+        fileCount: { type: 'integer', minimum: 0 },
+        totalBytes: { type: 'integer', minimum: 0 },
+        datasetRootHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        dataClassification: { type: 'string', minLength: 1, maxLength: 128 },
+        sourceOwner: { type: 'string', maxLength: 256 },
+        licenseUsageBasis: { type: 'string', maxLength: 512 },
+        retentionRule: { type: 'string', maxLength: 256 },
+      },
+    },
   ],
-  properties: {
-    provider: { const: 'model_release' },
-    recordType: { const: 'model_provenance_record' },
-    schemaVersion: { type: 'string', minLength: 1, maxLength: 32 },
-    canonicalHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
-    modelName: { type: 'string', minLength: 1, maxLength: 256 },
-    modelVersion: { type: 'string', minLength: 1, maxLength: 128 },
-    modelType: { type: 'string', minLength: 1, maxLength: 64 },
-    releaseStage: { type: 'string', minLength: 1, maxLength: 64 },
-    claimType: { type: 'string', minLength: 1, maxLength: 128 },
-    claimText: { type: 'string', minLength: 1, maxLength: 4000 },
-    claimScope: { type: 'string', minLength: 1, maxLength: 128 },
-    subjectType: { type: 'string', minLength: 1, maxLength: 128 },
-    subjectIdentifier: { type: 'string', minLength: 1, maxLength: 512 },
-    subjectHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
-    artifactManifestHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
-    modelCardHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
-    datasetManifestHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
-    evaluationReportHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
-    riskReviewHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
-    policyId: { type: 'string', minLength: 1, maxLength: 256 },
-    policyVersion: { type: 'string', minLength: 1, maxLength: 128 },
-    policyDecision: { type: 'string', minLength: 1, maxLength: 128 },
-    finalApprover: { type: 'string', minLength: 1, maxLength: 256 },
-    finalApprovalTimestamp: { type: 'string', minLength: 1, maxLength: 80 },
-    disclosureMode: { type: 'string', minLength: 1, maxLength: 128 },
-    verificationPolicy: { type: 'string', minLength: 1, maxLength: 128 },
-    retentionPeriod: { type: 'string', maxLength: 256 },
-    knownLimitations: { type: 'string', maxLength: 4000 },
-  },
 } as const;
 
 const modelReleaseSourceMetadataFromBody = (
@@ -1011,6 +1072,70 @@ const modelReleaseSourceMetadataFromBody = (
       ? { knownLimitations: raw.knownLimitations }
       : {}),
   };
+};
+
+const datasetInventorySourceMetadataFromBody = (
+  value: unknown,
+  createdByUserId: string,
+): DatasetInventorySourceMetadata | null => {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const requiredStrings = [
+    raw.recordType,
+    raw.schemaVersion,
+    raw.canonicalHash,
+    raw.datasetName,
+    raw.datasetVersion,
+    raw.inventoryScope,
+    raw.datasetRootHash,
+    raw.dataClassification,
+  ];
+  if (
+    raw.provider !== 'dataset_inventory' ||
+    raw.recordType !== 'dataset_inventory_record' ||
+    requiredStrings.some((field) => typeof field !== 'string') ||
+    typeof raw.fileCount !== 'number' ||
+    typeof raw.totalBytes !== 'number' ||
+    !Number.isInteger(raw.fileCount) ||
+    !Number.isInteger(raw.totalBytes)
+  ) {
+    return null;
+  }
+  return {
+    provider: 'dataset_inventory',
+    recordType: 'dataset_inventory_record',
+    schemaVersion: raw.schemaVersion as string,
+    canonicalHash: raw.canonicalHash as string,
+    datasetName: raw.datasetName as string,
+    datasetVersion: raw.datasetVersion as string,
+    inventoryScope: raw.inventoryScope as string,
+    fileCount: raw.fileCount as number,
+    totalBytes: raw.totalBytes as number,
+    datasetRootHash: raw.datasetRootHash as string,
+    dataClassification: raw.dataClassification as string,
+    createdByUserId,
+    createdAt: new Date().toISOString(),
+    ...(typeof raw.sourceOwner === 'string' ? { sourceOwner: raw.sourceOwner } : {}),
+    ...(typeof raw.licenseUsageBasis === 'string'
+      ? { licenseUsageBasis: raw.licenseUsageBasis }
+      : {}),
+    ...(typeof raw.retentionRule === 'string' ? { retentionRule: raw.retentionRule } : {}),
+  };
+};
+
+const sourceMetadataFromBody = (
+  value: unknown,
+  createdByUserId: string,
+): PublicAttestationSourceMetadata | null => {
+  if (!value || typeof value !== 'object') return null;
+  const provider = (value as Record<string, unknown>).provider;
+  if (provider === 'model_release') {
+    return modelReleaseSourceMetadataFromBody(value, createdByUserId);
+  }
+  if (provider === 'dataset_inventory') {
+    return datasetInventorySourceMetadataFromBody(value, createdByUserId);
+  }
+  return null;
 };
 const DEFAULT_PROJECT_TEMPLATE_SLUG = 'general_provenance';
 const EXPORT_JOB_RETENTION_DAYS = 30;
@@ -1603,7 +1728,7 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
       const label = req.body.label.trim();
       const submittedSha256 = normalizeSha256(req.body.sha256);
       const sourceMetadata = req.body.sourceMetadata
-        ? modelReleaseSourceMetadataFromBody(req.body.sourceMetadata, apiKey.createdByUserId)
+        ? sourceMetadataFromBody(req.body.sourceMetadata, apiKey.createdByUserId)
         : null;
       const complianceSha256 = req.body.compliance
         ? normalizeSha256(req.body.compliance.sha256)
@@ -1639,12 +1764,12 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
             publicError(
               req.id,
               'invalid_source_metadata',
-              'sourceMetadata must describe a model release provenance record.',
+              'sourceMetadata must describe a supported provenance record.',
               {
                 fieldErrors: [
                   publicFieldError(
                     'sourceMetadata',
-                    'sourceMetadata must describe a model release provenance record.',
+                    'sourceMetadata must describe a supported provenance record.',
                     'invalid',
                   ),
                 ],
@@ -1853,6 +1978,31 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
                   },
                 }
               : {}),
+            ...(sourceMetadata?.provider === 'dataset_inventory'
+              ? {
+                  dataset_inventory: {
+                    record_type: sourceMetadata.recordType,
+                    schema_version: sourceMetadata.schemaVersion,
+                    canonical_hash: sourceMetadata.canonicalHash,
+                    dataset_name: sourceMetadata.datasetName,
+                    dataset_version: sourceMetadata.datasetVersion,
+                    inventory_scope: sourceMetadata.inventoryScope,
+                    file_count: sourceMetadata.fileCount,
+                    total_bytes: sourceMetadata.totalBytes,
+                    dataset_root_hash: sourceMetadata.datasetRootHash,
+                    data_classification: sourceMetadata.dataClassification,
+                    ...(sourceMetadata.sourceOwner
+                      ? { source_owner: sourceMetadata.sourceOwner }
+                      : {}),
+                    ...(sourceMetadata.licenseUsageBasis
+                      ? { license_usage_basis: sourceMetadata.licenseUsageBasis }
+                      : {}),
+                    ...(sourceMetadata.retentionRule
+                      ? { retention_rule: sourceMetadata.retentionRule }
+                      : {}),
+                  },
+                }
+              : {}),
           },
         },
         ...(complianceSha256
@@ -1897,6 +2047,9 @@ export const publicV1Plugin: FastifyPluginAsync<PublicV1PluginOptions> = async (
           ocr_page_count: 0,
           ...(complianceSha256 ? { compliance_document_count: 1 } : {}),
           ...(sourceMetadata?.provider === 'model_release' ? { model_release_record_count: 1 } : {}),
+          ...(sourceMetadata?.provider === 'dataset_inventory'
+            ? { dataset_inventory_record_count: 1 }
+            : {}),
         },
       });
       const signedManifest: Manifest = {

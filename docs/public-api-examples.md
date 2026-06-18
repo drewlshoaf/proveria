@@ -164,6 +164,48 @@ proveria model-release init --output ./model-release.json
 proveria model-release attest ./model-release.json --project evaluation-evidence
 ```
 
+## Create A Dataset Inventory Attestation
+
+For dataset inventory provenance, hash the dataset locally and submit the
+canonical inventory record hash plus source metadata. Do not upload raw dataset
+files through this endpoint.
+
+```bash
+curl -sS "$PROVERIA_API_URL/v1/tenants/$PROVERIA_WORKSPACE/projects/evaluation-evidence/attestations" \
+  -H "Authorization: Bearer $PROVERIA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: attestation-dataset-inventory-2026-06-001" \
+  -d '{
+    "label": "Training Dataset 2026.06 inventory",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "fileName": "dataset-inventory.json",
+    "byteSize": 2048,
+    "sourceMetadata": {
+      "provider": "dataset_inventory",
+      "recordType": "dataset_inventory_record",
+      "schemaVersion": "0.1",
+      "canonicalHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "datasetName": "Training Dataset",
+      "datasetVersion": "2026.06",
+      "inventoryScope": "folder",
+      "fileCount": 1250,
+      "totalBytes": 83445512,
+      "datasetRootHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "dataClassification": "confidential",
+      "sourceOwner": "Data Governance",
+      "licenseUsageBasis": "Internal governed dataset approval.",
+      "retentionRule": "7 years"
+    }
+  }'
+```
+
+The recommended way to create this payload is:
+
+```bash
+proveria dataset collect ./dataset --output ./dataset-inventory.json --name "Training Dataset" --version 2026.06
+proveria dataset attest ./dataset-inventory.json --project evaluation-evidence
+```
+
 ```bash
 curl -sS "$PROVERIA_API_URL/v1/tenants/$PROVERIA_WORKSPACE/attestations/<attestation-id>" \
   -H "Authorization: Bearer $PROVERIA_API_KEY"

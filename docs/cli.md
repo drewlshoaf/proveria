@@ -180,6 +180,38 @@ The compliance JSON content itself is not uploaded. Its hash is committed as a
 second file leaf in the same attestation manifest, so the final receipt covers
 both the primary file hash and the compliance document hash.
 
+## Create A Dataset Inventory Receipt
+
+Use this path for AI dataset provenance workflows. The CLI recursively hashes a
+local folder, writes a dataset inventory record, and keeps raw dataset bytes
+local.
+
+```bash
+proveria dataset collect ./dataset \
+  --output ./dataset-inventory.json \
+  --name "Training Dataset" \
+  --version 2026.06 \
+  --classification confidential
+```
+
+Inspect the canonical hash and dataset summary:
+
+```bash
+proveria dataset inspect ./dataset-inventory.json
+```
+
+Submit the inventory record hash as an attestation:
+
+```bash
+proveria dataset attest ./dataset-inventory.json \
+  --project evaluation-evidence \
+  --name "Training Dataset 2026.06 inventory"
+```
+
+The final receipt covers the canonical inventory hash, dataset root hash, file
+count, total bytes, and classification metadata. It does not upload raw dataset
+files.
+
 ## Create A Model Release Receipt
 
 Use this path for API-first model governance workflows. The starter file is a
@@ -383,6 +415,10 @@ proveria prove <sha256> --project <slug> --name <name> [--file-name <name>] [--b
 proveria prove <file> --project <slug> [--name <name>] [--compliance-json <path>]
 proveria prove hash <sha256> --project <slug> --name <name> [--file-name <name>] [--byte-size <bytes>] [--compliance-json <path>]
 proveria prove file <file> --project <slug> [--name <name>] [--compliance-json <path>]
+proveria dataset init --output <file>
+proveria dataset collect <folder> --output <file> --name <name> --version <version>
+proveria dataset inspect <file> [--output json]
+proveria dataset attest <file> --project <slug> [--name <name>] [--output json]
 proveria model-release init --output <file>
 proveria model-release inspect <file> [--output json]
 proveria model-release attest <file> --project <slug> [--name <name>] [--output json]

@@ -62,6 +62,9 @@ proveria prove <sha256> --project evaluation-evidence --name external-proof
 proveria prove <sha256> --project evaluation-evidence --name external-proof --file-name invoice.pdf --byte-size 1234 --compliance-json docs/examples/compliance-controls.json
 proveria prove ./example.pdf --project evaluation-evidence
 proveria prove ./example.pdf --project evaluation-evidence --compliance-json docs/examples/compliance-controls.json
+proveria dataset collect ./dataset --output ./dataset-inventory.json --name "Training Dataset" --version 2026.06
+proveria dataset inspect ./dataset-inventory.json
+proveria dataset attest ./dataset-inventory.json --project evaluation-evidence --name "Training Dataset 2026.06 inventory"
 proveria model-release init --output ./model-release.json
 proveria model-release inspect ./model-release.json
 proveria model-release attest ./model-release.json --project evaluation-evidence --name "Graduation Model release"
@@ -128,6 +131,28 @@ The final attestation manifest contains a second file leaf with metadata like:
 ```
 
 The manifest should not contain the compliance JSON document body.
+
+## Dataset Inventory Receipts
+
+`proveria dataset collect` recursively hashes a local folder, writes a canonical
+dataset inventory record, and keeps raw dataset bytes local.
+
+```bash
+proveria dataset collect ./dataset \
+  --output ./dataset-inventory.json \
+  --name "Training Dataset" \
+  --version 2026.06 \
+  --classification confidential
+
+proveria dataset inspect ./dataset-inventory.json
+
+proveria dataset attest ./dataset-inventory.json \
+  --project evaluation-evidence \
+  --name "Training Dataset 2026.06 inventory"
+```
+
+The attestation commits the canonical inventory record hash and dataset summary
+metadata through the public API.
 
 ## Model Release Receipts
 
